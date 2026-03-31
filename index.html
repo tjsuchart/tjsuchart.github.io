@@ -8,6 +8,10 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&family=Nunito:wght@400;500;600;700&display=swap"
     rel="stylesheet">
+    
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+
   <style>
     *,
     *::before,
@@ -139,6 +143,32 @@
       margin-top: 1px
     }
 
+    /* Sync Cloud Status UI */
+    .cloud-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      padding: 6px 12px;
+      border-radius: 99px;
+      background: var(--bg);
+      border: 1px solid var(--bdr);
+      color: var(--txm);
+      transition: all 0.3s ease;
+    }
+    .cloud-status.synced {
+      color: var(--gr);
+      border-color: var(--gr);
+      background: rgba(90, 158, 111, 0.1);
+    }
+    .cloud-status.syncing {
+      color: var(--am);
+      border-color: var(--am);
+    }
+
     .tabs-w {
       margin: 28px 0 20px;
       animation: sd .6s .08s ease both
@@ -179,7 +209,6 @@
       box-shadow: 0 2px 12px rgba(0, 0, 0, .3)
     }
 
-    /* Crossed out day styling */
     .tb.day-completed {
       text-decoration: line-through;
       opacity: 0.5;
@@ -254,7 +283,6 @@
       background: var(--bdr)
     }
 
-    /* Task base styles */
     .task {
       display: flex;
       align-items: flex-start;
@@ -282,7 +310,6 @@
       transform: scale(.985)
     }
 
-    /* Active Task Highlight */
     .task.active-task {
       border-color: var(--am);
       box-shadow: 0 0 15px var(--ams);
@@ -295,7 +322,6 @@
       background: var(--am) !important;
     }
 
-    /* Done Task Styles */
     .task.done {
       opacity: .45
     }
@@ -453,7 +479,6 @@
       margin-bottom: 5px
     }
 
-    /* Editable specific styles */
     .ttitle,
     .ttime,
     .tbody {
@@ -602,7 +627,6 @@
       font-weight: 500
     }
 
-    /* Week Completion specific */
     #week-completion {
       background: linear-gradient(145deg, var(--card), #3c2f21);
       border-color: var(--am);
@@ -636,7 +660,6 @@
       transform: scale(.97)
     }
 
-    /* Rule styling */
     .nn {
       margin-top: 36px;
       padding: 24px 22px;
@@ -764,10 +787,13 @@
       <div class="hsub">Tap blocks to check off. <strong>Double-tap</strong> text to edit dynamically.</div>
       <div class="sbar">
         <div class="sicon">🔥</div>
-        <div>
+        <div style="flex: 1;">
           <div class="slabel">Current Streak</div>
           <div class="scount" id="sc">0 days</div>
           <div class="ssub" id="ss">Complete today to start</div>
+        </div>
+        <div class="cloud-status" id="cloud-status">
+          <span id="cloud-icon">☁️</span> <span id="cloud-text">Connecting...</span>
         </div>
       </div>
     </header>
@@ -825,12 +851,45 @@
   </div>
 
   <script>
+    // ==========================================
+    // 1. FIREBASE CONFIGURATION (WITH YOUR KEYS)
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBwL5EEBTO8S2KVXZftu68cc61dqxendYE",
+      authDomain: "my-schedule-8583d.firebaseapp.com",
+      projectId: "my-schedule-8583d",
+      storageBucket: "my-schedule-8583d.firebasestorage.app",
+      messagingSenderId: "829695009875",
+      appId: "1:829695009875:web:3a2ffb948dd03b91ec52a6"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const USER_ID = "my_personal_schedule"; 
+    const statusText = document.getElementById('cloud-text');
+    const statusBar = document.getElementById('cloud-status');
+
+    function setCloudStatus(status) {
+      if(status === 'synced') {
+        statusBar.className = 'cloud-status synced';
+        statusText.innerText = 'Synced';
+      } else if (status === 'syncing') {
+        statusBar.className = 'cloud-status syncing';
+        statusText.innerText = 'Syncing...';
+      } else {
+        statusBar.className = 'cloud-status';
+        statusText.innerText = 'Offline';
+      }
+    }
+
+    // ==========================================
+    // 2. SCHEDULE VARIABLES & TEMPLATES
+    // ==========================================
     const COLS = ['#e8963c', '#5a9e6f', '#d96b6b', '#5b9bc4', '#8b72c8', '#c8a84b'];
     const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    let streak = parseInt(localStorage.getItem('tj_s') || '0');
-    let lastDone = localStorage.getItem('tj_ld') || '';
+    let streak = 0;
+    let lastDone = '';
 
-    // Fully Detailed Weekday Template
     const weekdayHTML = `
     <div class="slbl">Morning</div>
     <div class="task go" onclick="tg(event, this)">
@@ -929,10 +988,8 @@
         <div class="ttop"><div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">Sleep</div><div class="ttime" ondblclick="mkEd(this)" onblur="svEd(this)">11:00 PM (Max 12:00)</div></div>
         <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">Everything you trained, studied, and built today gets locked in right here. </div>
       </div>
-    </div>
-`;
+    </div>`;
 
-    // Fully Detailed Saturday Template
     const saturdayHTML = `
     <div class="slbl">Morning</div>
     <div class="task go" onclick="tg(event, this)">
@@ -980,10 +1037,8 @@
         <div class="ttop"><div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">Sleep</div><div class="ttime" ondblclick="mkEd(this)" onblur="svEd(this)">11:30 PM (Max 12:00)</div></div>
         <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">More flexible on Saturday. Just don't wreck Sunday morning.</div>
       </div>
-    </div>
-`;
+    </div>`;
 
-    // Fully Detailed Sunday Template
     const sundayHTML = `
     <div class="slbl">Morning</div>
     <div class="task go" onclick="tg(event, this)">
@@ -1024,8 +1079,7 @@
         <div class="ttop"><div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">Sleep</div><div class="ttime" ondblclick="mkEd(this)" onblur="svEd(this)">11:00 PM</div></div>
         <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">Back on schedule. Monday starts with a full battery, or it doesn't start right.</div>
       </div>
-    </div>
-`;
+    </div>`;
 
     // Inject HTML for all 7 days
     const container = document.getElementById('schedule-container');
@@ -1090,22 +1144,13 @@
     }
 
     // Editable functionality
-    function mkEd(el) {
-      el.contentEditable = "true";
-      el.focus();
-    }
-
-    function svEd(el) {
-      el.contentEditable = "false";
-      save();
-      highlightCurrentTask();
-    }
+    function mkEd(el) { el.contentEditable = "true"; el.focus(); }
+    function svEd(el) { el.contentEditable = "false"; save(); highlightCurrentTask(); }
 
     function updStreak() {
       document.getElementById('sc').textContent = streak + (streak === 1 ? ' day' : ' days');
       document.getElementById('ss').textContent = streak === 0 ? 'Complete today to start' : '🎯 Keep it going!';
     }
-    updStreak();
 
     function sw(day, btn) {
       document.querySelectorAll('.sched').forEach(s => s.classList.remove('active'));
@@ -1140,17 +1185,11 @@
 
     function tg(event, task) {
       if (event.target.isContentEditable) return;
-
       const was = task.classList.contains('done');
       task.classList.toggle('done');
-
-      if (!was) {
-        spawn(task);
-        playCheckSound();
-      }
-
+      if (!was) { spawn(task); playCheckSound(); }
       updProg(task.dataset.day);
-      save();
+      save(); // Auto-saves to cloud on every click
     }
 
     function checkWholeWeek() {
@@ -1181,7 +1220,7 @@
 
       if (done === total && total > 0) {
         card.classList.add('vis');
-        tabBtn.classList.add('day-completed'); // Strikeout the tab
+        tabBtn.classList.add('day-completed');
         const today = new Date().toDateString();
 
         if (!card.dataset.played) {
@@ -1189,10 +1228,10 @@
           confetti(80);
           card.dataset.played = "true";
           if (lastDone !== today) {
-            lastDone = today; streak++;
-            localStorage.setItem('tj_s', streak);
-            localStorage.setItem('tj_ld', lastDone);
+            lastDone = today; 
+            streak++;
             updStreak();
+            save(); // Save new streak to cloud
           }
         }
 
@@ -1207,7 +1246,7 @@
       } else {
         card.classList.remove('vis');
         card.dataset.played = "";
-        tabBtn.classList.remove('day-completed'); // Remove strikeout if unchecked
+        tabBtn.classList.remove('day-completed');
         weekCard.classList.remove('vis');
       }
     }
@@ -1219,11 +1258,15 @@
       });
       const todayName = DAYS[(new Date().getDay() + 6) % 7];
       sw(todayName, document.getElementById('tab-' + todayName));
-      save();
+      save(); // Clears all checks in the cloud
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    // ==========================================
+    // 3. FIREBASE CLOUD SYNC LOGIC
+    // ==========================================
     function save() {
+      setCloudStatus('syncing');
       const st = {};
       DAYS.forEach(d => {
         const section = document.getElementById(d);
@@ -1236,10 +1279,63 @@
           }));
         }
       });
+
+      // Send to Firebase
+      db.collection("schedules").doc(USER_ID).set({
+        data: st,
+        streak: streak,
+        lastDone: lastDone,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        setCloudStatus('synced');
+      }).catch(err => {
+        console.error("Cloud Save Failed:", err);
+        setCloudStatus('error');
+      });
+
+      // Keep local backup just in case
       localStorage.setItem('tj_st_v5', JSON.stringify(st));
     }
 
-    function load() {
+    // This listens for updates from other devices instantly
+    function initRealtimeSync() {
+      setCloudStatus('syncing');
+      db.collection("schedules").doc(USER_ID).onSnapshot((docSnap) => {
+        if (docSnap.exists) {
+          const remoteData = docSnap.data().data;
+          if (docSnap.data().streak !== undefined) streak = docSnap.data().streak;
+          if (docSnap.data().lastDone !== undefined) lastDone = docSnap.data().lastDone;
+          
+          DAYS.forEach(d => {
+            if (!remoteData[d]) return;
+            const tasks = document.querySelectorAll('#' + d + ' .task');
+            tasks.forEach((t, i) => {
+              const taskData = remoteData[d][i];
+              if (!taskData) return;
+              
+              if (taskData.done) t.classList.add('done');
+              else t.classList.remove('done');
+              
+              t.querySelector('.ttitle').innerHTML = taskData.title;
+              t.querySelector('.ttime').innerHTML = taskData.time;
+              t.querySelector('.tbody').innerHTML = taskData.body;
+            });
+            updProg(d);
+          });
+          updStreak();
+          setCloudStatus('synced');
+        } else {
+          // If no cloud data exists yet, load local and push it to cloud
+          loadLocalFallback();
+          save();
+        }
+      }, (error) => {
+        console.error("Sync Error:", error);
+        loadLocalFallback(); // Fallback if offline
+      });
+    }
+
+    function loadLocalFallback() {
       try {
         const raw = localStorage.getItem('tj_st_v5');
         if (!raw) return;
@@ -1254,7 +1350,7 @@
             if (taskData.time) t.querySelector('.ttime').innerHTML = taskData.time;
             if (taskData.body) t.querySelector('.tbody').innerHTML = taskData.body;
           });
-          updProg(d); // ensure tabs load their crossed-out state
+          updProg(d);
         });
       } catch (e) { }
     }
@@ -1299,8 +1395,10 @@
       });
     }
 
-    // Initialization
-    load();
+    // Initialize Sync Engine
+    initRealtimeSync();
+    
+    // UI Initialization
     const startDayIdx = (new Date().getDay() + 6) % 7;
     const startDayName = DAYS[startDayIdx];
     sw(startDayName, document.getElementById('tab-' + startDayName));
