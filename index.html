@@ -113,8 +113,11 @@
     .sk::before{background:var(--sk)} .vi::before{background:var(--vi)} .go::before{background:var(--go)}
     .task.t-warn { border-color:rgba(217,107,107,.5) }
     .task.t-warn .ttime { background:var(--ros) !important; color:var(--ro) !important }
-    .sched.day-off .task:not([data-nn="true"]) { display:none }
+    .sched.day-off .task.off-hidden { display:none }
     .sched.day-off .slbl { display:none }
+    .adj-off-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px }
+    .adj-off-actions .adj-apply { flex:1 1 150px }
+    .adj-off-chip { width:100%; padding:10px 12px; border-radius:10px; background:var(--card-h); border:1px solid var(--bdr); color:var(--txs); font-size:12px; font-weight:700; margin-bottom:8px }
 
     /* CHECKBOX */
     .ck { width:26px; height:26px; border-radius:50%; border:2px solid var(--bdr2); flex-shrink:0; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:all .28s cubic-bezier(.34,1.56,.64,1) }
@@ -302,9 +305,13 @@
         </div>
 
         <div class="adj-off-msg" id="adj-off-msg">
-          <strong>Day off mode active.</strong>
-          Showing only your 3 non-negotiables — workout, build/code, and sleep. Even 20 mins of coding counts. Hit those and the day isn't wasted.<br><br>
-          <button class="adj-apply" onclick="clearDayOff()">Show full schedule</button>
+          <strong id="off-title">Off day mode</strong>
+          <div class="adj-off-chip" id="off-desc">Choose whether today is productive or just a clean break. Same day, different chaos.</div>
+          <div class="adj-off-actions">
+            <button class="adj-apply" id="off-prod-btn" onclick="setOffMode('productive')">Productive off day</button>
+            <button class="adj-apply" id="off-break-btn" onclick="setOffMode('break')">Break off day</button>
+            <button class="adj-apply" onclick="clearDayOff()">Back to normal</button>
+          </div>
         </div>
 
         <div class="adj-warn" id="adj-warn-msg">
@@ -390,6 +397,8 @@
     const BT = { WAKE_WD:380, LEAVE_WD:450, HOME_WD:960, WAKE_SAT:480, WAKE_SUN:510 };
     let streak   = parseInt(localStorage.getItem('tj_s')  || '0');
     let lastDone = localStorage.getItem('tj_ld') || '';
+    let offModes = {};
+    try { offModes = JSON.parse(localStorage.getItem('tj_off_modes') || '{}') || {}; } catch(e) { offModes = {}; }
     let currentDay = DAYS[(new Date().getDay() + 6) % 7];
 
     function T(c, base, dur, grp, nn, title, time, body) { 
@@ -452,18 +461,117 @@
       ${T('am',1320,'20 min', 'afternoon',false,'Week Planning',         '10:00 PM · 20 min',  'Set 3 priorities for the week.')}
       ${T('sk',1380,'',       'afternoon',true, 'Sleep',                 '11:00 PM',           'Monday starts with a full battery.')}`;
 
+
+    function normalizeOffMode(mode) {
+      return mode === 'productive' || mode === 'break' ? mode : 'normal';
+    }
+
+    function taskTitle(task) {
+      return (task.querySelector('.ttitle')?.innerText || '').trim().toLowerCase();
+    }
+
+    function isProductiveVisible(task, day) {
+      const title = taskTitle(task);
+      if (day === 'monday' || day === 'tuesday' || day === 'wednesday' || day === 'thursday' || day === 'friday') {
+        return !title.includes('school') && !title.includes('free time');
+      }
+      if (day === 'saturday') {
+        return !title.includes('completely free');
+      }
+      if (day === 'sunday') {
+        return !title.includes('full free day');
+      }
+      return true;
+    }
+
+    function isBreakVisible(task, day) {
+      const title = taskTitle(task);
+      return (
+        title.includes('wake') ||
+        title.includes('calisthenics') ||
+        title.includes('workout') ||
+        title.includes('build / code') ||
+        title.includes('deep work') ||
+        title.includes('sleep')
+      );
+    }
+
+    function syncOffModeUI(day, mode) {
+      const normalized = normalizeOffMode(mode);
+      const isCurrent = day === currentDay;
+      const sched = document.getElementById(day);
+      if (!sched) return normalized;
+
+      sched.classList.toggle('day-off', normalized !== 'normal');
+      sched.classList.toggle('mode-productive', normalized === 'productive');
+      sched.classList.toggle('mode-break', normalized === 'break');
+
+      sched.querySelectorAll('.task').forEach(task => {
+        task.classList.remove('off-hidden');
+        if (normalized === 'normal') return;
+        const show = normalized === 'productive'
+          ? isProductiveVisible(task, day)
+          : isBreakVisible(task, day);
+        task.classList.toggle('off-hidden', !show);
+      });
+
+      if (isCurrent) {
+        const hdr = document.getElementById('do-hdr');
+        const title = document.getElementById('off-title');
+        const desc = document.getElementById('off-desc');
+        const emoji = document.querySelector('#do-hdr .do-emoji');
+        if (normalized === 'normal') {
+          hdr.classList.remove('show');
+        } else {
+          hdr.classList.add('show');
+          if (normalized === 'productive') {
+            if (emoji) emoji.textContent = '⚙️';
+            if (title) title.textContent = 'Productive off day active.';
+            if (desc) desc.textContent = 'No school, but the day still has structure. Hit the productive blocks and let the rest fall away.';
+          } else {
+            if (emoji) emoji.textContent = '🛋️';
+            if (title) title.textContent = 'Break off day active.';
+            if (desc) desc.textContent = 'Essentials only. Keep the day light, protect your energy, and do the minimum that actually matters.';
+          }
+          const prodBtn = document.getElementById('off-prod-btn');
+          const breakBtn = document.getElementById('off-break-btn');
+          if (prodBtn) prodBtn.classList.toggle('active', normalized === 'productive');
+          if (breakBtn) breakBtn.classList.toggle('active', normalized === 'break');
+        }
+      }
+
+      return normalized;
+    }
+
+    function setOffMode(mode) {
+      const normalized = normalizeOffMode(mode);
+      offModes[currentDay] = normalized;
+      syncOffModeUI(currentDay, normalized);
+      save();
+      updProg(currentDay);
+      highlightCurrentTask();
+    }
+
+    function clearDayOff() {
+      offModes[currentDay] = 'normal';
+      syncOffModeUI(currentDay, 'normal');
+      save();
+      updProg(currentDay);
+      highlightCurrentTask();
+    }
+
     // ── DELAY TASK LOGIC ──
-// This version keeps the whole chain in sync so every later task moves too.
+// ── DELAY TASK LOGIC (CASCADING) ──
 let targetDelayTask = null;
 
 function openDelayMenu(event, btn) {
-  event.stopPropagation();
+  event.stopPropagation(); 
   targetDelayTask = btn.closest('.task');
 
   const menu = document.getElementById('delay-menu');
   const rect = btn.getBoundingClientRect();
 
-  menu.style.left = Math.max(10, rect.left - 150) + 'px';
+  menu.style.left = Math.max(10, rect.left - 150) + 'px'; 
   menu.style.top = (rect.bottom + window.scrollY + 8) + 'px';
   menu.classList.add('show');
 }
@@ -480,88 +588,68 @@ document.addEventListener('click', (e) => {
   }
 });
 
-function syncTaskDisplay(task) {
-  const base = parseInt(task.dataset.base || '0', 10);
-  const dur = task.dataset.dur || '';
-  const ttime = task.querySelector('.ttime');
-  if (ttime && Number.isFinite(base) && base > 0) {
-    ttime.textContent = mToDisp(base, dur);
-  }
-}
-
-function parseDuration(durStr) {
-  if (!durStr) return 0;
-
-  let mins = 0;
-  const hr = durStr.match(/(\d+(\.\d+)?)\s*hr/);
-  const min = durStr.match(/(\d+)\s*min/);
-
-  if (hr) mins += parseFloat(hr[1]) * 60;
-  if (min) mins += parseInt(min[1]);
-
-  return mins;
-}
-
-function cascadeDelayFrom(startTask, shiftMins) {
+// Helper function to push back the target task AND all tasks after it
+function shiftTasksFrom(startTask, shiftMins) {
   const sched = startTask.closest('.sched');
-  if (!sched) return;
+  if (!sched || !Number.isFinite(shiftMins) || shiftMins === 0) return;
 
+  // Get all tasks in the current day's schedule
   const tasks = Array.from(sched.querySelectorAll('.task'));
   const startIndex = tasks.indexOf(startTask);
+
   if (startIndex === -1) return;
 
-  // step 1: apply shift to selected task
-  let prevEnd = parseInt(startTask.dataset.base || '0') + shiftMins;
-  startTask.dataset.base = prevEnd;
+  // Loop from the delayed task down to the end of the day
+  for (let i = startIndex; i < tasks.length; i++) {
+    const t = tasks[i];
+    const base = parseInt(t.dataset.base || '0');
+    const dur = t.dataset.dur || '';
 
-  // update its display
-  let dur = parseDuration(startTask.dataset.dur);
-  startTask.querySelector('.ttime').textContent = mToDisp(prevEnd, startTask.dataset.dur);
-  prevEnd += dur;
-
-  // step 2: reflow EVERYTHING after it sequentially
-  for (let i = startIndex + 1; i < tasks.length; i++) {
-    let t = tasks[i];
-    let d = parseDuration(t.dataset.dur);
-
-    t.dataset.base = prevEnd;
-    t.querySelector('.ttime').textContent = mToDisp(prevEnd, t.dataset.dur);
-    t.classList.add('t-warn');
-
-    prevEnd += d;
+    if (base > 0) {
+      const newBase = base + shiftMins;
+      t.dataset.base = newBase;
+      t.querySelector('.ttime').textContent = mToDisp(newBase, dur);
+      t.classList.add('t-warn'); // Highlights shifted tasks in red so you know they changed
+    }
   }
 }
 
 function finishDelayUpdate() {
-  const day = targetDelayTask?.dataset.day;
-  if (targetDelayTask) normalizeScheduleFrom(targetDelayTask);
   save();
-  if (day) updProg(day);
   highlightCurrentTask();
   closeDelayMenu();
 }
 
 function applyDelay(mins) {
   if (!targetDelayTask) return;
-  const currentBase = parseInt(targetDelayTask.dataset.base || '0', 10);
-  if (Number.isFinite(currentBase) && currentBase > 0) {
-    cascadeDelayFrom(targetDelayTask, mins);
+
+  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
+
+  if (currentBase > 0) {
+    // Shift this task and all subsequent tasks by 'mins'
+    shiftTasksFrom(targetDelayTask, mins);
   }
+
   finishDelayUpdate();
 }
 
 function applyCustomDelay() {
   if (!targetDelayTask) return;
   const timeVal = document.getElementById('dm-time').value;
-  if (!timeVal) return;
+  if (!timeVal) return; 
 
   const [hStr, mStr] = timeVal.split(':');
-  const newBase = parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
-  const currentBase = parseInt(targetDelayTask.dataset.base || '0', 10);
+  const newBase = parseInt(hStr) * 60 + parseInt(mStr);
+  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
 
-  if (Number.isFinite(currentBase) && currentBase > 0 && Number.isFinite(newBase)) {
-    cascadeDelayFrom(targetDelayTask, newBase - currentBase);
+  if (currentBase > 0) {
+    // Calculate how many minutes we are shifting by
+    const diffMins = newBase - currentBase;
+
+    // Shift this task and all subsequent tasks by the difference
+    shiftTasksFrom(targetDelayTask, diffMins);
   }
+
   finishDelayUpdate();
 }
 
@@ -606,21 +694,7 @@ function applyCustomDelay() {
     }
 
     function mkEd(el) { el.contentEditable = "true"; el.focus(); }
-    function svEd(el) {
-      el.contentEditable = "false";
-      if (el.classList.contains('ttime')) {
-        const mins = parseTimeMins(el.innerText);
-        const task = el.closest('.task');
-        if (task && Number.isFinite(mins) && mins > 0) {
-          task.dataset.base = String(mins);
-          const dur = task.dataset.dur || '';
-          el.textContent = mToDisp(mins, dur);
-          task.classList.remove('t-warn');
-        }
-      }
-      save();
-      highlightCurrentTask();
-    }
+    function svEd(el) { el.contentEditable = "false"; save(); highlightCurrentTask(); }
 
     function updStreak() {
       document.getElementById('sc').textContent = streak + (streak===1?' day':' days');
@@ -677,16 +751,22 @@ function applyCustomDelay() {
       updProg(task.dataset.day); save();
     }
 
+    function getVisibleTasks(day) {
+      const s = document.getElementById(day); if (!s) return [];
+      return Array.from(s.querySelectorAll('.task')).filter(t => !t.classList.contains('off-hidden'));
+    }
+
     function checkWholeWeek() {
       return DAYS.every(d => {
-        const s = document.getElementById(d); if (!s) return false;
-        const all = s.querySelectorAll('.task'), done = s.querySelectorAll('.task.done');
-        return all.length > 0 && done.length === all.length;
+        const visible = getVisibleTasks(d);
+        const done = visible.filter(t => t.classList.contains('done'));
+        return visible.length > 0 && done.length === visible.length;
       });
     }
     function updProg(day) {
-      const s = document.getElementById(day); if (!s) return;
-      const all=s.querySelectorAll('.task'), done=s.querySelectorAll('.task.done').length, total=all.length;
+      const visible = getVisibleTasks(day);
+      const done = visible.filter(t => t.classList.contains('done')).length;
+      const total = visible.length;
       document.getElementById('pf').style.width = (total ? done/total*100 : 0)+'%';
       document.getElementById('pt').textContent = done+' / '+total+' done';
       
@@ -719,6 +799,8 @@ function applyCustomDelay() {
       DAYS.forEach(d => {
         document.querySelectorAll('#'+d+' .task').forEach(t=>{ t.classList.remove('done'); t.classList.remove('missed'); });
         document.getElementById('tab-'+d).classList.remove('day-completed');
+        offModes[d] = 'normal';
+        syncOffModeUI(d, 'normal');
       });
       resetAllTimes();
       const today = DAYS[(new Date().getDay()+6)%7];
@@ -738,12 +820,13 @@ function applyCustomDelay() {
       if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
       if (td.time) t.querySelector('.ttime').innerHTML = td.time;
       if (td.body) t.querySelector('.tbody').innerHTML = td.body;
-      
-      const hasBase = td.base !== undefined && td.base !== null && td.base !== '';
-      if (hasBase) t.dataset.base = String(td.base);
-      if (td.dur !== undefined && td.dur !== null) t.dataset.dur = td.dur;
-      if (hasBase && String(td.base) !== t.getAttribute('data-base')) t.classList.add('t-warn');
+      if (td.base !== undefined) t.dataset.base = td.base;
+      if (td.dur !== undefined) t.dataset.dur = td.dur;
     });
+  });
+
+  DAYS.forEach(d => {
+    syncOffModeUI(d, offModes[d] || 'normal');
     updProg(d);
   });
   highlightCurrentTask();
@@ -759,25 +842,34 @@ function applyCustomDelay() {
       title: t.querySelector('.ttitle').innerHTML,
       time: t.querySelector('.ttime').innerHTML,
       body: t.querySelector('.tbody').innerHTML,
-      // ADD THESE TWO LINES:
       base: t.dataset.base,
       dur: t.dataset.dur
     }));
   });
   
   if (isCloudActive) {
-    db.collection("schedules").doc("my_personal_schedule").set({tasks:st,streak,lastDone}).catch(e=>console.error(e));
+    db.collection("schedules").doc("my_personal_schedule").set({tasks:st,streak,lastDone,offModes}).catch(e=>console.error(e));
   } else {
     localStorage.setItem('tj_st_v5', JSON.stringify(st));
+    localStorage.setItem('tj_off_modes', JSON.stringify(offModes));
   }
 }
     function load() {
       if (isCloudActive) {
         db.collection("schedules").doc("my_personal_schedule").get().then(doc=>{
-          if (doc.exists) { const d=doc.data(); streak=d.streak||0; lastDone=d.lastDone||''; updStreak(); applyState(d.tasks); }
+          if (doc.exists) {
+            const d=doc.data();
+            streak=d.streak||0; lastDone=d.lastDone||''; offModes=d.offModes||{};
+            updStreak(); applyState(d.tasks);
+          }
         }).catch(e=>console.error(e));
       } else {
-        try { const raw=localStorage.getItem('tj_st_v5'); if (raw) applyState(JSON.parse(raw)); } catch(e) {}
+        try {
+          const raw=localStorage.getItem('tj_st_v5');
+          const modes=localStorage.getItem('tj_off_modes');
+          if (modes) offModes = JSON.parse(modes) || {};
+          if (raw) applyState(JSON.parse(raw));
+        } catch(e) {}
       }
     }
 
@@ -787,24 +879,6 @@ function applyCustomDelay() {
       let h=parseInt(m[1]),min=parseInt(m[2]); const ap=m[3]?m[3].toLowerCase():null;
       if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0;
       return h*60+min;
-    }
-
-    function syncTaskDisplay(task) {
-      if (!task) return;
-      const base = parseInt(task.dataset.base || '0', 10);
-      if (!Number.isFinite(base) || base <= 0) return;
-      const dur = task.dataset.dur || '';
-      const ttime = task.querySelector('.ttime');
-      if (ttime) ttime.textContent = mToDisp(base, dur);
-    }
-
-    function normalizeScheduleFrom(startTask) {
-      const sched = startTask?.closest('.sched');
-      if (!sched) return;
-      const tasks = Array.from(sched.querySelectorAll('.task'));
-      const startIndex = tasks.indexOf(startTask);
-      if (startIndex === -1) return;
-      for (let i = startIndex; i < tasks.length; i++) syncTaskDisplay(tasks[i]);
     }
     function highlightCurrentTask() {
       const now=new Date(), todayStr=DAYS[(now.getDay()+6)%7], cur=now.getHours()*60+now.getMinutes();
@@ -860,21 +934,42 @@ function applyCustomDelay() {
       document.getElementById('adj-off-msg').classList.toggle('show', mode==='off');
       document.getElementById('adj-note').classList.toggle('show', mode==='wake'||mode==='home');
       document.getElementById('adj-warn-msg').classList.remove('show');
-      if (mode==='normal') { resetDayTimes(); clearDayOff(); }
-      if (mode==='off') setDayOff();
+      if (mode==='normal') {
+        resetDayTimes();
+        clearDayOff();
+      }
+      if (mode==='off') {
+        const active = offModes[currentDay] || 'productive';
+        offModes[currentDay] = active;
+        syncOffModeUI(currentDay, active);
+        save();
+        updProg(currentDay);
+        highlightCurrentTask();
+      }
     }
 
     function resetAdjPanel(day) {
       adjOpen = false;
       document.getElementById('adj-body').classList.remove('open');
       document.getElementById('adj-arr').style.transform = '';
-      document.querySelectorAll('.adj-mb').forEach(b=>b.classList.toggle('active',b.dataset.mode==='normal'));
-      ['adj-wake-field','adj-home-field','adj-off-msg','adj-note','adj-warn-msg'].forEach(id=>document.getElementById(id).classList.remove('show'));
-      DAYS.forEach(d=>document.getElementById(d).classList.remove('day-off'));
-      document.getElementById('do-hdr').classList.remove('show');
       document.getElementById('adj-home-btn').classList.toggle('hidden', !WDS.has(day));
       document.getElementById('wake-inp').value = WDS.has(day) ? '06:20' : day==='saturday' ? '08:00' : '08:30';
       document.getElementById('home-inp').value = '16:00';
+
+      const mode = normalizeOffMode(offModes[day] || 'normal');
+      document.querySelectorAll('.adj-mb').forEach(b => {
+        const isOff = b.dataset.mode === 'off';
+        b.classList.toggle('active', mode === 'normal' ? b.dataset.mode === 'normal' : isOff);
+      });
+
+      document.getElementById('adj-wake-field').classList.remove('show');
+      document.getElementById('adj-home-field').classList.remove('show');
+      document.getElementById('adj-note').classList.remove('show');
+      document.getElementById('adj-warn-msg').classList.remove('show');
+      document.getElementById('adj-off-msg').classList.toggle('show', mode !== 'normal');
+
+      syncOffModeUI(day, mode);
+      updProg(day);
     }
 
     function tToM(val) { const [h,m]=val.split(':').map(Number); return h*60+m; }
@@ -901,9 +996,8 @@ function applyCustomDelay() {
       if (!sched) return;
       let warn = false;
       sched.querySelectorAll(`.task[data-group="${grp}"]`).forEach(task => {
-        const base=parseInt(task.dataset.base||'0',10), dur=task.dataset.dur||'';
+        const base=parseInt(task.dataset.base||'0'), dur=task.dataset.dur||'';
         const adj=base+delayMins;
-        task.dataset.base = String(adj);
         task.querySelector('.ttime').textContent = mToDisp(adj, dur);
         const late = (cap && adj>=cap) || (base>=1350 && adj>=1440);
         task.classList.toggle('t-warn', late);
@@ -936,12 +1030,19 @@ function applyCustomDelay() {
     }
 
     function setDayOff() {
-      document.getElementById(currentDay).classList.add('day-off');
-      document.getElementById('do-hdr').classList.add('show');
+      const active = offModes[currentDay] || 'productive';
+      offModes[currentDay] = active;
+      syncOffModeUI(currentDay, active);
+      save();
+      updProg(currentDay);
+      highlightCurrentTask();
     }
     function clearDayOff() {
-      DAYS.forEach(d=>document.getElementById(d).classList.remove('day-off'));
-      document.getElementById('do-hdr').classList.remove('show');
+      offModes[currentDay] = 'normal';
+      syncOffModeUI(currentDay, 'normal');
+      save();
+      updProg(currentDay);
+      highlightCurrentTask();
     }
 
     load();
