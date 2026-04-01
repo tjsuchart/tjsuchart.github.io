@@ -145,6 +145,42 @@
     .task.missed::before { background: var(--ro) !important; opacity: 0.4 !important; }
     .task.shake { animation: shake 0.3s ease; }
 
+    /* DELAY MENU & BUTTON */
+    .delay-btn {
+      width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--bdr2); 
+      display: flex; align-items: center; justify-content: center;
+      color: var(--txm); font-size: 11px; cursor: pointer; transition: all .2s; 
+      flex-shrink: 0; margin-top: 1px; z-index: 2; opacity: 0; pointer-events: none;
+    }
+    .task:hover .delay-btn { opacity: 1; pointer-events: auto; }
+    .delay-btn:hover { background: var(--ams); color: var(--am); border-color: var(--am); }
+    
+    #delay-menu {
+      position: absolute; display: none; flex-direction: column; gap: 8px;
+      background: var(--card); border: 1px solid var(--bdr); border-radius: 12px;
+      padding: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10000;
+    }
+    #delay-menu.show { display: flex; animation: sd .2s ease; }
+    .dm-row { display: flex; gap: 6px; }
+    .dm-btn {
+      flex: 1; padding: 6px 10px; background: var(--bg2); border: 1px solid var(--bdr2);
+      border-radius: 6px; color: var(--tx); font-size: 11px; font-weight: 700;
+      cursor: pointer; transition: background .2s;
+    }
+    .dm-btn:hover { background: var(--am); color: #18130f; border-color: var(--am); }
+    .dm-custom { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+    .dm-custom input {
+      width: 75px; padding: 6px; background: var(--bg); border: 1px solid var(--bdr2);
+      border-radius: 6px; color: var(--tx); font-size: 12px; outline: none;
+    }
+    .dm-custom input:focus { border-color: var(--am); }
+    .dm-close { font-size: 10px; color: var(--txm); text-align: right; cursor: pointer; margin-bottom: -4px; text-transform: uppercase; font-weight: bold; }
+    .dm-close:hover { color: var(--ro); }
+    
+    @media(max-width:480px) {
+      .delay-btn { opacity: 1; pointer-events: auto; }
+    }
+
     /* TASK CONTENT */
     .tc { flex:1; min-width:0 }
     .ttop { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px }
@@ -289,6 +325,19 @@
       </div>
     </div>
 
+    <div id="delay-menu">
+      <div class="dm-close" onclick="closeDelayMenu()">✕ Close</div>
+      <div class="dm-row">
+        <button class="dm-btn" onclick="applyDelay(5)">+5 min</button>
+        <button class="dm-btn" onclick="applyDelay(10)">+10 min</button>
+        <button class="dm-btn" onclick="applyDelay(20)">+20 min</button>
+      </div>
+      <div class="dm-custom">
+        <input type="time" id="dm-time" />
+        <button class="dm-btn" onclick="applyCustomDelay()">Set Time</button>
+      </div>
+    </div>
+
     <div id="schedule-container"></div>
 
     <div class="cc-card" id="week-completion">
@@ -343,20 +392,20 @@
     let lastDone = localStorage.getItem('tj_ld') || '';
     let currentDay = DAYS[(new Date().getDay() + 6) % 7];
 
-    function T(c, base, dur, grp, nn, title, time, body) {
-      return `<div class="task ${c}" onclick="tg(event,this)"
-        data-base="${base}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}>
-        <div class="ck"><span class="cki">✓</span></div>
-        <div class="tc">
-          <div class="ttop">
-            <div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">${title}</div>
-            <div class="ttime"  ondblclick="mkEd(this)" onblur="svEd(this)">${time}</div>
-          </div>
-          <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">${body}</div>
-        </div>
-        <div class="miss-btn" onclick="toggleMissed(event, this)" title="Mark as missed">✕</div>
-      </div>`;
-    }
+    function T(c, base, dur, grp, nn, title, time, body) { 
+  return `<div class="task ${c}" onclick="tg(event,this)" data-base="${base}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}> 
+    <div class="ck"><span class="cki">✓</span></div> 
+    <div class="tc"> 
+      <div class="ttop"> 
+        <div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">${title}</div> 
+        <div class="ttime" ondblclick="mkEd(this)" onblur="svEd(this)">${time}</div> 
+      </div> 
+      <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">${body}</div> 
+    </div> 
+    <div class="delay-btn" onclick="openDelayMenu(event, this)" title="Delay Task">⏱️</div>
+    <div class="miss-btn" onclick="toggleMissed(event, this)" title="Mark as missed">✕</div> 
+  </div>`;
+}
     function SEC(lbl) { return `<div class="slbl">${lbl}</div>`; }
 
     // ── SCHEDULES (UPDATED WIND DOWN) ──
@@ -402,6 +451,75 @@
       ${SEC('Evening')}
       ${T('am',1320,'20 min', 'afternoon',false,'Week Planning',         '10:00 PM · 20 min',  'Set 3 priorities for the week.')}
       ${T('sk',1380,'',       'afternoon',true, 'Sleep',                 '11:00 PM',           'Monday starts with a full battery.')}`;
+
+    // ── DELAY TASK LOGIC ──
+let targetDelayTask = null;
+
+function openDelayMenu(event, btn) {
+  event.stopPropagation(); // Prevents marking the task as completed
+  targetDelayTask = btn.closest('.task');
+  
+  const menu = document.getElementById('delay-menu');
+  const rect = btn.getBoundingClientRect();
+  
+  // Position the menu near the clicked button
+  menu.style.left = Math.max(10, rect.left - 150) + 'px'; 
+  menu.style.top = (rect.bottom + window.scrollY + 8) + 'px';
+  menu.classList.add('show');
+}
+
+function closeDelayMenu() {
+  document.getElementById('delay-menu').classList.remove('show');
+  targetDelayTask = null;
+}
+
+// Close the menu if clicked outside
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('delay-menu');
+  if (menu.classList.contains('show') && !menu.contains(e.target) && !e.target.classList.contains('delay-btn')) {
+    closeDelayMenu();
+  }
+});
+
+function applyDelay(mins) {
+  if (!targetDelayTask) return;
+  
+  let currentBase = parseInt(targetDelayTask.dataset.base || '0');
+  let dur = targetDelayTask.dataset.dur || '';
+  
+  if (currentBase > 0) {
+    currentBase += mins;
+    targetDelayTask.dataset.base = currentBase;
+    
+    // Updates the time display using your built-in formatting function
+    targetDelayTask.querySelector('.ttime').textContent = mToDisp(currentBase, dur);
+    
+    // Highlights the task in red to show it's been manually shifted
+    targetDelayTask.classList.add('t-warn'); 
+  }
+  
+  save();
+  highlightCurrentTask();
+  closeDelayMenu();
+}
+
+function applyCustomDelay() {
+  if (!targetDelayTask) return;
+  const timeVal = document.getElementById('dm-time').value;
+  if (!timeVal) return; // Ignore if empty
+  
+  const [hStr, mStr] = timeVal.split(':');
+  let newBase = parseInt(hStr) * 60 + parseInt(mStr);
+  let dur = targetDelayTask.dataset.dur || '';
+  
+  targetDelayTask.dataset.base = newBase;
+  targetDelayTask.querySelector('.ttime').textContent = mToDisp(newBase, dur);
+  targetDelayTask.classList.add('t-warn');
+  
+  save();
+  highlightCurrentTask();
+  closeDelayMenu();
+}
 
     // ── BUILD DOM ──
     const container = document.getElementById('schedule-container');
