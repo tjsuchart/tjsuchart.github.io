@@ -740,6 +740,10 @@
         if(late) warn=true;
       });
       document.getElementById('adj-warn-msg').classList.toggle('show', warn);
+      
+      // FIX: Update the glowing highlight immediately and save the new times!
+      highlightCurrentTask(); 
+      save();
     }
 
     function resetDayTimes() {
@@ -750,6 +754,10 @@
         task.classList.remove('t-warn');
       });
       document.getElementById('adj-warn-msg').classList.remove('show');
+      
+      // FIX: Update the highlight and save
+      highlightCurrentTask();
+      save();
     }
 
     function resetAllTimes() {
@@ -760,6 +768,10 @@
           task.classList.remove('t-warn');
         });
       });
+      
+      // FIX: Update the highlight and save
+      highlightCurrentTask();
+      save();
     }
 
     // ── DAY OFF ──
