@@ -511,6 +511,7 @@ function cascadeDelayFrom(startTask, shiftMins) {
 
 function finishDelayUpdate() {
   const day = targetDelayTask?.dataset.day;
+  if (targetDelayTask) normalizeScheduleFrom(targetDelayTask);
   save();
   if (day) updProg(day);
   highlightCurrentTask();
@@ -582,7 +583,21 @@ function applyCustomDelay() {
     }
 
     function mkEd(el) { el.contentEditable = "true"; el.focus(); }
-    function svEd(el) { el.contentEditable = "false"; save(); highlightCurrentTask(); }
+    function svEd(el) {
+      el.contentEditable = "false";
+      if (el.classList.contains('ttime')) {
+        const mins = parseTimeMins(el.innerText);
+        const task = el.closest('.task');
+        if (task && Number.isFinite(mins) && mins > 0) {
+          task.dataset.base = String(mins);
+          const dur = task.dataset.dur || '';
+          el.textContent = mToDisp(mins, dur);
+          task.classList.remove('t-warn');
+        }
+      }
+      save();
+      highlightCurrentTask();
+    }
 
     function updStreak() {
       document.getElementById('sc').textContent = streak + (streak===1?' day':' days');
@@ -701,10 +716,10 @@ function applyCustomDelay() {
       if (td.time) t.querySelector('.ttime').innerHTML = td.time;
       if (td.body) t.querySelector('.tbody').innerHTML = td.body;
       
-      // ADD THESE THREE LINES:
-      if (td.base) t.dataset.base = td.base;
-      if (td.dur) t.dataset.dur = td.dur;
-      if (td.base && td.base !== t.getAttribute('data-base')) t.classList.add('t-warn');
+      const hasBase = td.base !== undefined && td.base !== null && td.base !== '';
+      if (hasBase) t.dataset.base = String(td.base);
+      if (td.dur !== undefined && td.dur !== null) t.dataset.dur = td.dur;
+      if (hasBase && String(td.base) !== t.getAttribute('data-base')) t.classList.add('t-warn');
     });
     updProg(d);
   });
@@ -749,6 +764,24 @@ function applyCustomDelay() {
       let h=parseInt(m[1]),min=parseInt(m[2]); const ap=m[3]?m[3].toLowerCase():null;
       if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0;
       return h*60+min;
+    }
+
+    function syncTaskDisplay(task) {
+      if (!task) return;
+      const base = parseInt(task.dataset.base || '0', 10);
+      if (!Number.isFinite(base) || base <= 0) return;
+      const dur = task.dataset.dur || '';
+      const ttime = task.querySelector('.ttime');
+      if (ttime) ttime.textContent = mToDisp(base, dur);
+    }
+
+    function normalizeScheduleFrom(startTask) {
+      const sched = startTask?.closest('.sched');
+      if (!sched) return;
+      const tasks = Array.from(sched.querySelectorAll('.task'));
+      const startIndex = tasks.indexOf(startTask);
+      if (startIndex === -1) return;
+      for (let i = startIndex; i < tasks.length; i++) syncTaskDisplay(tasks[i]);
     }
     function highlightCurrentTask() {
       const now=new Date(), todayStr=DAYS[(now.getDay()+6)%7], cur=now.getHours()*60+now.getMinutes();
@@ -845,8 +878,9 @@ function applyCustomDelay() {
       if (!sched) return;
       let warn = false;
       sched.querySelectorAll(`.task[data-group="${grp}"]`).forEach(task => {
-        const base=parseInt(task.dataset.base||'0'), dur=task.dataset.dur||'';
+        const base=parseInt(task.dataset.base||'0',10), dur=task.dataset.dur||'';
         const adj=base+delayMins;
+        task.dataset.base = String(adj);
         task.querySelector('.ttime').textContent = mToDisp(adj, dur);
         const late = (cap && adj>=cap) || (base>=1350 && adj>=1440);
         task.classList.toggle('t-warn', late);
