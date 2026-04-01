@@ -489,23 +489,46 @@ function syncTaskDisplay(task) {
   }
 }
 
+function parseDuration(durStr) {
+  if (!durStr) return 0;
+
+  let mins = 0;
+  const hr = durStr.match(/(\d+(\.\d+)?)\s*hr/);
+  const min = durStr.match(/(\d+)\s*min/);
+
+  if (hr) mins += parseFloat(hr[1]) * 60;
+  if (min) mins += parseInt(min[1]);
+
+  return mins;
+}
+
 function cascadeDelayFrom(startTask, shiftMins) {
   const sched = startTask.closest('.sched');
-  if (!sched || !Number.isFinite(shiftMins) || shiftMins === 0) return;
+  if (!sched) return;
 
   const tasks = Array.from(sched.querySelectorAll('.task'));
   const startIndex = tasks.indexOf(startTask);
   if (startIndex === -1) return;
 
-  for (let i = startIndex; i < tasks.length; i++) {
-    const task = tasks[i];
-    const base = parseInt(task.dataset.base || '0', 10);
-    if (!Number.isFinite(base) || base <= 0) continue;
+  // step 1: apply shift to selected task
+  let prevEnd = parseInt(startTask.dataset.base || '0') + shiftMins;
+  startTask.dataset.base = prevEnd;
 
-    const newBase = base + shiftMins;
-    task.dataset.base = String(newBase);
-    syncTaskDisplay(task);
-    task.classList.add('t-warn');
+  // update its display
+  let dur = parseDuration(startTask.dataset.dur);
+  startTask.querySelector('.ttime').textContent = mToDisp(prevEnd, startTask.dataset.dur);
+  prevEnd += dur;
+
+  // step 2: reflow EVERYTHING after it sequentially
+  for (let i = startIndex + 1; i < tasks.length; i++) {
+    let t = tasks[i];
+    let d = parseDuration(t.dataset.dur);
+
+    t.dataset.base = prevEnd;
+    t.querySelector('.ttime').textContent = mToDisp(prevEnd, t.dataset.dur);
+    t.classList.add('t-warn');
+
+    prevEnd += d;
   }
 }
 
