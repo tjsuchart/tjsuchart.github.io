@@ -709,39 +709,50 @@ function applyCustomDelay() {
     }
 
     function applyState(st) {
-      if (!st) return;
-      DAYS.forEach(d => {
-        if (!st[d]) return;
-        document.querySelectorAll('#'+d+' .task').forEach((t,i) => {
-          const td=st[d][i]; if (!td) return;
-          if (td.done)  t.classList.add('done');
-          if (td.missed) t.classList.add('missed');
-          if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
-          if (td.time)  t.querySelector('.ttime').innerHTML  = td.time;
-          if (td.body)  t.querySelector('.tbody').innerHTML  = td.body;
-        });
-        updProg(d);
-      });
-      highlightCurrentTask();
-    }
+  if (!st) return;
+  DAYS.forEach(d => {
+    if (!st[d]) return;
+    document.querySelectorAll('#' + d + ' .task').forEach((t, i) => {
+      const td = st[d][i];
+      if (!td) return;
+      if (td.done) t.classList.add('done');
+      if (td.missed) t.classList.add('missed');
+      if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
+      if (td.time) t.querySelector('.ttime').innerHTML = td.time;
+      if (td.body) t.querySelector('.tbody').innerHTML = td.body;
+      
+      // ADD THESE THREE LINES:
+      if (td.base) t.dataset.base = td.base;
+      if (td.dur) t.dataset.dur = td.dur;
+      if (td.base && td.base !== t.getAttribute('data-base')) t.classList.add('t-warn');
+    });
+    updProg(d);
+  });
+  highlightCurrentTask();
+}
     function save() {
-      const st={};
-      DAYS.forEach(d => {
-        const s=document.getElementById(d); if (!s) return;
-        st[d]=Array.from(s.querySelectorAll('.task')).map(t=>({
-          done:t.classList.contains('done'),
-          missed:t.classList.contains('missed'),
-          title:t.querySelector('.ttitle').innerHTML,
-          time:t.querySelector('.ttime').innerHTML,
-          body:t.querySelector('.tbody').innerHTML
-        }));
-      });
-      if (isCloudActive) {
-        db.collection("schedules").doc("my_personal_schedule").set({tasks:st,streak,lastDone}).catch(e=>console.error(e));
-      } else {
-        localStorage.setItem('tj_st_v5', JSON.stringify(st));
-      }
-    }
+  const st = {};
+  DAYS.forEach(d => {
+    const s = document.getElementById(d);
+    if (!s) return;
+    st[d] = Array.from(s.querySelectorAll('.task')).map(t => ({
+      done: t.classList.contains('done'),
+      missed: t.classList.contains('missed'),
+      title: t.querySelector('.ttitle').innerHTML,
+      time: t.querySelector('.ttime').innerHTML,
+      body: t.querySelector('.tbody').innerHTML,
+      // ADD THESE TWO LINES:
+      base: t.dataset.base,
+      dur: t.dataset.dur
+    }));
+  });
+  
+  if (isCloudActive) {
+    db.collection("schedules").doc("my_personal_schedule").set({tasks:st,streak,lastDone}).catch(e=>console.error(e));
+  } else {
+    localStorage.setItem('tj_st_v5', JSON.stringify(st));
+  }
+}
     function load() {
       if (isCloudActive) {
         db.collection("schedules").doc("my_personal_schedule").get().then(doc=>{
