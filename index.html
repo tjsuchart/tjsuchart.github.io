@@ -111,10 +111,8 @@
     .task.done::before { opacity:.25 }
     .am::before{background:var(--am)} .gr::before{background:var(--gr)} .ro::before{background:var(--ro)}
     .sk::before{background:var(--sk)} .vi::before{background:var(--vi)} .go::before{background:var(--go)}
-    /* time-warn: task shifted too late */
     .task.t-warn { border-color:rgba(217,107,107,.5) }
     .task.t-warn .ttime { background:var(--ros) !important; color:var(--ro) !important }
-    /* day-off: hide non-essential */
     .sched.day-off .task:not([data-nn="true"]) { display:none }
     .sched.day-off .slbl { display:none }
 
@@ -137,7 +135,6 @@
     }
     .task:hover .miss-btn { opacity: 1; pointer-events: auto; }
     .miss-btn:hover { background: var(--ros); color: var(--ro); border-color: var(--ro); }
-    
     .task.missed { opacity: 0.55; border-color: var(--bdr); animation: none; }
     .task.missed .miss-btn { background: var(--ro); color: #18130f; border-color: var(--ro); opacity: 1; pointer-events: auto; }
     .task.missed .ttitle { text-decoration: line-through; color: var(--ro); opacity: 0.8; }
@@ -193,12 +190,11 @@
     @keyframes pulse-glow { 0%{box-shadow:0 0 15px var(--ams)} 50%{box-shadow:0 0 25px rgba(232,150,60,0.4)} 100%{box-shadow:0 0 15px var(--ams)} }
     @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
 
-    /* RESPONSIVE */
     @media(max-width:480px) {
       .app{padding:0 12px 100px} .hdr{padding:32px 0 20px}
       .task{padding:14px;gap:11px} .ttitle{font-size:15px}
       .tb{font-size:11px;padding:9px 2px}
-      .miss-btn { opacity: 1; pointer-events: auto; } /* Always show miss button on mobile */
+      .miss-btn { opacity: 1; pointer-events: auto; }
     }
   </style>
 </head>
@@ -342,14 +338,11 @@
     const COLS  = ['#e8963c','#5a9e6f','#d96b6b','#5b9bc4','#8b72c8','#c8a84b'];
     const DAYS  = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
     const WDS   = new Set(['monday','tuesday','wednesday','thursday','friday']);
-    // Base times in minutes from midnight
     const BT = { WAKE_WD:380, LEAVE_WD:450, HOME_WD:960, WAKE_SAT:480, WAKE_SUN:510 };
     let streak   = parseInt(localStorage.getItem('tj_s')  || '0');
     let lastDone = localStorage.getItem('tj_ld') || '';
     let currentDay = DAYS[(new Date().getDay() + 6) % 7];
 
-    // ── TEMPLATE BUILDER ──
-    // color, baseMin, durStr, group, nn, title, defaultTime, body
     function T(c, base, dur, grp, nn, title, time, body) {
       return `<div class="task ${c}" onclick="tg(event,this)"
         data-base="${base}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}>
@@ -366,49 +359,49 @@
     }
     function SEC(lbl) { return `<div class="slbl">${lbl}</div>`; }
 
-    // ── SCHEDULES ──
+    // ── SCHEDULES (UPDATED WIND DOWN) ──
     const wdHTML = `
       <div class="do-nn-lbl">Non-Negotiables</div>
       ${SEC('Morning')}
-      ${T('go',380, '',       'morning',  false,'Wake Up',            '6:20 AM',           'Water immediately. No phone for 15 minutes. Sets the tone for everything that follows.')}
-      ${T('ro',390, '40 min', 'morning',  true, 'Calisthenics',       '6:30 AM · 40 min',  'No equipment needed. Rotate every day — same time, different session.')}
-      ${T('go',430, '20 min', 'morning',  false,'Shower + Breakfast', '7:10 AM · 20 min',  'Eat with protein. Your focus at school is directly tied to this — don\'t skip it.')}
-      ${T('vi',450, '',       'morning',  false,'Head to School',     '7:30 AM',           'Use the commute — podcast, audiobook, or aerospace news. Don\'t waste those 15 minutes.')}
+      ${T('go',380, '',       'morning',  false,'Wake Up',            '6:20 AM',           'Water immediately. No phone for 15 minutes.')}
+      ${T('ro',390, '40 min', 'morning',  true, 'Calisthenics',       '6:30 AM · 40 min',  'No equipment needed. Rotate sessions.')}
+      ${T('go',430, '20 min', 'morning',  false,'Shower + Breakfast', '7:10 AM · 20 min',  'Eat with protein.')}
+      ${T('vi',450, '',       'morning',  false,'Head to School',     '7:30 AM',           'Use the commute — podcast or aerospace news.')}
       ${SEC('School')}
-      ${T('vi',480, '',       'fixed',    false,'School',             '8:00 AM – 4:00 PM', 'Actually pay attention in Physics and Maths. Extract every bit of value while you\'re already there.')}
+      ${T('vi',480, '',       'fixed',    false,'School',             '8:00 AM – 4:00 PM', 'Physics and Maths focus.')}
       ${SEC('Afternoon')}
-      ${T('am',960, '30 min', 'afternoon',false,'Decompress',         '4:00 PM · 30 min',  'Eat something, lie down, do nothing. Hard reset before you ask more of your brain.')}
-      ${T('gr',990, '1 hr',   'afternoon',true, 'Build / Code',       '4:30 PM · 1 hr',    'Roblox game, Python project, freelance work — whatever you\'re actively building. Phone away.')}
-      ${T('ro',1050,'20 min', 'afternoon',false,'Quick Break',        '5:30 PM · 20 min',  'Step away from the screen. Walk around, stretch, grab a snack.')}
-      ${T('vi',1070,'1 hr',   'afternoon',false,'A-Level Self Study', '5:50 PM · 1 hr',    'Past papers over notes, every time. Active recall only.')}
-      ${T('vi',1140,'10 min', 'afternoon',false,'Daily Review',       '7:00 PM · 10 min',  'Write 3 things you learned today from memory. Don\'t skip it.')}
+      ${T('am',960, '30 min', 'afternoon',false,'Decompress',         '4:00 PM · 30 min',  'Hard reset before your personal blocks.')}
+      ${T('gr',990, '1 hr',   'afternoon',true, 'Build / Code',       '4:30 PM · 1 hr',    'Focused output block. Phone away.')}
+      ${T('ro',1050,'20 min', 'afternoon',false,'Quick Break',        '5:30 PM · 20 min',  'Step away from the screen.')}
+      ${T('vi',1070,'1 hr',   'afternoon',false,'A-Level Self Study', '5:50 PM · 1 hr',    'Past papers over notes.')}
+      ${T('vi',1140,'10 min', 'afternoon',false,'Daily Review',       '7:00 PM · 10 min',  'Write 3 things you learned today.')}
       ${SEC('Evening')}
-      ${T('ro',1170,'2.5 hrs','afternoon',false,'Free Time',          '7:30 PM · 2.5 hrs', 'Girlfriend, games, basketball, YouTube — completely yours. Eat whenever it fits in.')}
-      ${T('gr',1335,'45 min', 'afternoon',false,'Read + Wind Down',   '10:15 PM · 45 min', 'Naval Almanack, aerospace news, anything curious. Start getting off screens.')}
-      ${T('sk',1380,'',       'afternoon',true, 'Sleep',              '11:00 PM (Max 12:00)','Everything you trained, studied, and built today gets locked in right here.')}`;
+      ${T('ro',1170,'3.25 hrs','afternoon',false,'Free Time',          '7:30 PM · 3.25 hrs', 'Girlfriend, games, basketball, or YouTube.')}
+      ${T('gr',1365,'15 min', 'afternoon',false,'Wind Down',         '10:45 PM · 15 min', 'Get off screens, stretch, and prepare for sleep.')}
+      ${T('sk',1380,'',       'afternoon',true, 'Sleep',              '11:00 PM (Max 12:00)','Everything you did today gets locked in here.')}`;
     
     const satHTML = `
       <div class="do-nn-lbl">Non-Negotiables</div>
       ${SEC('Morning')}
-      ${T('go',480, '',       'morning',  false,'Wake Up',          '8:00 AM',           'Sleep in naturally. Water, no phone. Weekend mornings are slower on purpose.')}
-      ${T('ro',510, '50 min', 'morning',  true, 'Long Workout',     '8:30 AM · 50 min',  'Full session — combine push + legs. Take your time.')}
-      ${T('go',570, '30 min', 'morning',  false,'Shower + Breakfast','9:30 AM · 30 min', 'Eat properly, take your time. Saturday mornings are yours to enjoy.')}
+      ${T('go',480, '',       'morning',  false,'Wake Up',          '8:00 AM',           'Sleep in naturally. Water, no phone.')}
+      ${T('ro',510, '50 min', 'morning',  true, 'Long Workout',     '8:30 AM · 50 min',  'Full session — push + legs.')}
+      ${T('go',570, '30 min', 'morning',  false,'Shower + Breakfast','9:30 AM · 30 min', 'Eat properly.')}
       ${SEC('Deep Work')}
-      ${T('gr',630, '3 hrs',  'morning',  true, 'Deep Work Block',  '10:30 AM · 3 hrs',  'Your most productive block of the week. Three hours of real, focused output.')}
+      ${T('gr',630, '3 hrs',  'morning',  true, 'Deep Work Block',  '10:30 AM · 3 hrs',  'Focused output block.')}
       ${SEC('Rest of Day')}
-      ${T('ro',840, '',       'morning',  false,'Completely Free',  '2:00 PM onward',    'Games, girlfriend, basketball, go out — fully yours. Don\'t think about productivity.')}
-      ${T('sk',1410,'',       'afternoon',true, 'Sleep',            '11:30 PM (Max 12:00)','More flexible on Saturday. Just don\'t wreck Sunday morning.')}`;
+      ${T('ro',840, '',       'morning',  false,'Completely Free',  '2:00 PM onward',    'Rest and recharge.')}
+      ${T('sk',1410,'',       'afternoon',true, 'Sleep',            '11:30 PM (Max 12:00)','Recharge for Sunday.')}`;
 
     const sunHTML = `
       <div class="do-nn-lbl">Non-Negotiables</div>
       ${SEC('Morning')}
-      ${T('go',510, '',       'morning',  false,'Wake Up — Rest Day',    '8:30 AM+',          'Full rest day. No workout. Sleep until your body is actually done.')}
-      ${T('vi',600, '1 hr',   'morning',  false,'Light Study (optional)','10:00 AM · 1 hr max','Only if exams are close. Review the week\'s material — no new content.')}
+      ${T('go',510, '',       'morning',  false,'Wake Up — Rest Day',    '8:30 AM+',          'Full rest day. No workout.')}
+      ${T('vi',600, '1 hr',   'morning',  false,'Light Study (optional)','10:00 AM · 1 hr max','Review material only.')}
       ${SEC('Day')}
-      ${T('ro',690, '',       'morning',  false,'Full Free Day',         '11:30 AM · all day', 'Completely unstructured. Recharge properly.')}
+      ${T('ro',690, '',       'morning',  false,'Full Free Day',         '11:30 AM · all day', 'Completely unstructured.')}
       ${SEC('Evening')}
-      ${T('am',1320,'20 min', 'afternoon',false,'Week Planning',         '10:00 PM · 20 min',  'Write your 3 priorities for the week. Just 3. What makes the week a success?')}
-      ${T('sk',1380,'',       'afternoon',true, 'Sleep',                 '11:00 PM',           'Back on schedule. Monday starts with a full battery, or it doesn\'t start right.')}`;
+      ${T('am',1320,'20 min', 'afternoon',false,'Week Planning',         '10:00 PM · 20 min',  'Set 3 priorities for the week.')}
+      ${T('sk',1380,'',       'afternoon',true, 'Sleep',                 '11:00 PM',           'Monday starts with a full battery.')}`;
 
     // ── BUILD DOM ──
     const container = document.getElementById('schedule-container');
@@ -428,7 +421,6 @@
       container.appendChild(d);
     });
 
-    // ── AUDIO ──
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playTone(freq, type, dur, vol, t) {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -451,18 +443,15 @@
       [523.25,659.25,783.99,1046.50].forEach(f => playTone(f,'square',1.2,0.2,t+0.6));
     }
 
-    // ── EDIT ──
     function mkEd(el) { el.contentEditable = "true"; el.focus(); }
     function svEd(el) { el.contentEditable = "false"; save(); highlightCurrentTask(); }
 
-    // ── STREAK ──
     function updStreak() {
       document.getElementById('sc').textContent = streak + (streak===1?' day':' days');
       document.getElementById('ss').textContent = streak===0 ? 'Complete today to start' : '🎯 Keep it going!';
     }
     updStreak();
 
-    // ── NAVIGATION ──
     function sw(day, btn) {
       currentDay = day;
       document.querySelectorAll('.sched').forEach(s => s.classList.remove('active'));
@@ -478,7 +467,6 @@
       window.scrollTo({top:0,behavior:'smooth'});
     }
 
-    // ── BURST ──
     function spawn(task) {
       const b = document.createElement('div');
       b.className = 'burst'; task.appendChild(b);
@@ -492,42 +480,27 @@
       setTimeout(()=>b.remove(),800);
     }
 
-    // ── TOGGLE TASK ──
     function tg(event, task) {
-      // Ignore clicks if editing or clicking the 'Miss' button
       if (event.target.isContentEditable || event.target.classList.contains('miss-btn')) return;
-      
-      // If marked missed, clear the missed status first
-      if (task.classList.contains('missed')) {
-        task.classList.remove('missed');
-      }
-      
+      if (task.classList.contains('missed')) task.classList.remove('missed');
       const was = task.classList.contains('done');
       task.classList.toggle('done');
       if (!was) { spawn(task); playCheckSound(); }
       updProg(task.dataset.day); save();
     }
     
-    // ── TOGGLE MISSED ──
     function toggleMissed(event, btn) {
-      event.stopPropagation(); // Stop task click event from firing
+      event.stopPropagation();
       const task = btn.closest('.task');
-      
-      if (task.classList.contains('done')) {
-        task.classList.remove('done');
-      }
-      
+      if (task.classList.contains('done')) task.classList.remove('done');
       task.classList.toggle('missed');
-      
       if (task.classList.contains('missed')) {
         task.classList.add('shake');
         setTimeout(() => task.classList.remove('shake'), 300);
       }
-      
       updProg(task.dataset.day); save();
     }
 
-    // ── PROGRESS ──
     function checkWholeWeek() {
       return DAYS.every(d => {
         const s = document.getElementById(d); if (!s) return false;
@@ -548,7 +521,6 @@
       if (done===total && total>0) {
         card.classList.add('vis'); tabBtn.classList.add('day-completed');
         const today = new Date().toDateString();
-        
         if (!card.dataset.played) {
           playDayCompleteSound(); confetti(80); card.dataset.played="true";
           if (lastDone!==today) {
@@ -567,7 +539,6 @@
       }
     }
 
-    // ── RESET ──
     function resetAll() {
       DAYS.forEach(d => {
         document.querySelectorAll('#'+d+' .task').forEach(t=>{ t.classList.remove('done'); t.classList.remove('missed'); });
@@ -579,7 +550,6 @@
       save(); window.scrollTo({top:0,behavior:'smooth'});
     }
 
-    // ── SAVE / LOAD ──
     function applyState(st) {
       if (!st) return;
       DAYS.forEach(d => {
@@ -594,6 +564,7 @@
         });
         updProg(d);
       });
+      highlightCurrentTask();
     }
     function save() {
       const st={};
@@ -623,7 +594,6 @@
       }
     }
 
-    // ── HIGHLIGHT CURRENT TASK ──
     function parseTimeMins(str) {
       const m=str.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/i);
       if (!m) return null;
@@ -646,7 +616,6 @@
       });
     }
 
-    // ── CONFETTI ──
     function confetti(amount=140) {
       const cv=document.getElementById('cc'),ctx=cv.getContext('2d');
       cv.width=window.innerWidth; cv.height=window.innerHeight;
@@ -670,11 +639,7 @@
       }
       draw();
     }
-    window.addEventListener('resize',()=>{const c=document.getElementById('cc');c.width=window.innerWidth;c.height=window.innerHeight;});
 
-    // ════════════════════════════════════════
-    // ADJUST PANEL
-    // ════════════════════════════════════════
     let adjOpen = false;
     function toggleAdj() {
       adjOpen = !adjOpen;
@@ -691,7 +656,7 @@
       document.getElementById('adj-note').classList.toggle('show', mode==='wake'||mode==='home');
       document.getElementById('adj-warn-msg').classList.remove('show');
       if (mode==='normal') { resetDayTimes(); clearDayOff(); }
-      if (mode==='off')    { setDayOff(); }
+      if (mode==='off') setDayOff();
     }
 
     function resetAdjPanel(day) {
@@ -707,7 +672,6 @@
       document.getElementById('home-inp').value = '16:00';
     }
 
-    // ── TIME MATH ──
     function tToM(val) { const [h,m]=val.split(':').map(Number); return h*60+m; }
     function mToDisp(mins, dur) {
       const h24=Math.floor(mins/60)%24, m=mins%60;
@@ -718,7 +682,7 @@
 
     function applyWake() {
       const actual = tToM(document.getElementById('wake-inp').value);
-      const base   = WDS.has(currentDay) ? BT.WAKE_WD : currentDay==='saturday' ? BT.WAKE_SAT : BT.WAKE_SUN;
+      const base = WDS.has(currentDay) ? BT.WAKE_WD : currentDay==='saturday' ? BT.WAKE_SAT : BT.WAKE_SUN;
       shiftGroup('morning', actual-base, WDS.has(currentDay) ? BT.LEAVE_WD : null);
     }
 
@@ -740,10 +704,7 @@
         if(late) warn=true;
       });
       document.getElementById('adj-warn-msg').classList.toggle('show', warn);
-      
-      // FIX: Update the glowing highlight immediately and save the new times!
-      highlightCurrentTask(); 
-      save();
+      highlightCurrentTask(); save();
     }
 
     function resetDayTimes() {
@@ -754,10 +715,7 @@
         task.classList.remove('t-warn');
       });
       document.getElementById('adj-warn-msg').classList.remove('show');
-      
-      // FIX: Update the highlight and save
-      highlightCurrentTask();
-      save();
+      highlightCurrentTask(); save();
     }
 
     function resetAllTimes() {
@@ -768,13 +726,9 @@
           task.classList.remove('t-warn');
         });
       });
-      
-      // FIX: Update the highlight and save
-      highlightCurrentTask();
-      save();
+      highlightCurrentTask(); save();
     }
 
-    // ── DAY OFF ──
     function setDayOff() {
       document.getElementById(currentDay).classList.add('day-off');
       document.getElementById('do-hdr').classList.add('show');
@@ -784,7 +738,6 @@
       document.getElementById('do-hdr').classList.remove('show');
     }
 
-    // ── INIT ──
     load();
     sw(currentDay, document.getElementById('tab-'+currentDay));
     highlightCurrentTask();
