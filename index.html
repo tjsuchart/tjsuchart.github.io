@@ -453,16 +453,16 @@
       ${T('sk',1380,'',       'afternoon',true, 'Sleep',                 '11:00 PM',           'Monday starts with a full battery.')}`;
 
     // ── DELAY TASK LOGIC ──
+// ── DELAY TASK LOGIC (CASCADING) ──
 let targetDelayTask = null;
 
 function openDelayMenu(event, btn) {
-  event.stopPropagation(); // Prevents marking the task as completed
+  event.stopPropagation(); 
   targetDelayTask = btn.closest('.task');
   
   const menu = document.getElementById('delay-menu');
   const rect = btn.getBoundingClientRect();
   
-  // Position the menu near the clicked button
   menu.style.left = Math.max(10, rect.left - 150) + 'px'; 
   menu.style.top = (rect.bottom + window.scrollY + 8) + 'px';
   menu.classList.add('show');
@@ -473,7 +473,6 @@ function closeDelayMenu() {
   targetDelayTask = null;
 }
 
-// Close the menu if clicked outside
 document.addEventListener('click', (e) => {
   const menu = document.getElementById('delay-menu');
   if (menu.classList.contains('show') && !menu.contains(e.target) && !e.target.classList.contains('delay-btn')) {
@@ -481,21 +480,62 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Helper function to push back the target task AND all tasks after it
+function shiftTasksFrom(startTask, shiftMins) {
+  const sched = startTask.closest('.sched');
+  if (!sched) return;
+  
+  // Get all tasks in the current day's schedule
+  const tasks = Array.from(sched.querySelectorAll('.task'));
+  const startIndex = tasks.indexOf(startTask);
+  
+  if (startIndex === -1) return;
+  
+  // Loop from the delayed task down to the end of the day
+  for (let i = startIndex; i < tasks.length; i++) {
+    let t = tasks[i];
+    let base = parseInt(t.dataset.base || '0');
+    let dur = t.dataset.dur || '';
+    
+    if (base > 0) {
+      let newBase = base + shiftMins;
+      t.dataset.base = newBase;
+      t.querySelector('.ttime').textContent = mToDisp(newBase, dur);
+      t.classList.add('t-warn'); // Highlights shifted tasks in red so you know they changed
+    }
+  }
+}
+
 function applyDelay(mins) {
   if (!targetDelayTask) return;
   
   let currentBase = parseInt(targetDelayTask.dataset.base || '0');
-  let dur = targetDelayTask.dataset.dur || '';
   
   if (currentBase > 0) {
-    currentBase += mins;
-    targetDelayTask.dataset.base = currentBase;
+    // Shift this task and all subsequent tasks by 'mins'
+    shiftTasksFrom(targetDelayTask, mins);
+  }
+  
+  save();
+  highlightCurrentTask();
+  closeDelayMenu();
+}
+
+function applyCustomDelay() {
+  if (!targetDelayTask) return;
+  const timeVal = document.getElementById('dm-time').value;
+  if (!timeVal) return; 
+  
+  const [hStr, mStr] = timeVal.split(':');
+  let newBase = parseInt(hStr) * 60 + parseInt(mStr);
+  let currentBase = parseInt(targetDelayTask.dataset.base || '0');
+  
+  if (currentBase > 0) {
+    // Calculate how many minutes we are shifting by
+    let diffMins = newBase - currentBase;
     
-    // Updates the time display using your built-in formatting function
-    targetDelayTask.querySelector('.ttime').textContent = mToDisp(currentBase, dur);
-    
-    // Highlights the task in red to show it's been manually shifted
-    targetDelayTask.classList.add('t-warn'); 
+    // Shift this task and all subsequent tasks by the difference
+    shiftTasksFrom(targetDelayTask, diffMins);
   }
   
   save();
