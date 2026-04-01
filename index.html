@@ -101,10 +101,10 @@
     .task { display:flex; align-items:flex-start; gap:14px; background:var(--card); border:1px solid var(--bdr); border-radius:var(--rad); padding:16px 18px; margin-bottom:8px; cursor:pointer; transition:all .22s ease; position:relative; overflow:hidden; user-select:none; -webkit-tap-highlight-color:transparent }
     .task:hover { background:var(--card-h); border-color:var(--bdr2); transform:translateY(-1px) }
     .task:active { transform:scale(.985) }
-    .task.active-task { border-color:var(--am); box-shadow:0 0 15px var(--ams); background:var(--card-h) }
+    .task.active-task { border-color:var(--am); background:var(--card-h); animation:pulse-glow 2s infinite }
     .task.active-task::before { opacity:1 !important; width:4px; background:var(--am) !important }
     .task.done { opacity:.45 }
-    .task.done.active-task { box-shadow:none; border-color:var(--bdr); opacity:.6 }
+    .task.done.active-task { animation:none; box-shadow:none; border-color:var(--bdr); opacity:.6 }
     .task.done .ttitle { text-decoration:line-through; color:var(--txm) }
     .task.done .tbody { opacity:.55 }
     .task::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:var(--rad) 0 0 var(--rad); transition:all .2s }
@@ -128,6 +128,26 @@
     .cki { opacity:0; transform:scale(0) rotate(-20deg); transition:all .28s cubic-bezier(.34,1.56,.64,1); color:#fff; font-size:13px; line-height:1; font-weight:700 }
     .task.done .cki { opacity:1; transform:scale(1) rotate(0) }
 
+    /* MISSED TASK STYLES */
+    .miss-btn {
+      width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--bdr2); 
+      display: flex; align-items: center; justify-content: center;
+      color: var(--txm); font-size: 11px; font-weight: bold; cursor: pointer; transition: all .2s; 
+      flex-shrink: 0; margin-top: 1px; z-index: 2; opacity: 0; pointer-events: none;
+    }
+    .task:hover .miss-btn { opacity: 1; pointer-events: auto; }
+    .miss-btn:hover { background: var(--ros); color: var(--ro); border-color: var(--ro); }
+    
+    .task.missed { opacity: 0.55; border-color: var(--bdr); animation: none; }
+    .task.missed .miss-btn { background: var(--ro); color: #18130f; border-color: var(--ro); opacity: 1; pointer-events: auto; }
+    .task.missed .ttitle { text-decoration: line-through; color: var(--ro); opacity: 0.8; }
+    .task.missed .ttime { text-decoration: line-through; opacity: 0.7; }
+    .task.missed .tbody { opacity: 0.5; }
+    .task.missed .ck { border-color: var(--bdr2) !important; background: transparent !important; transform: scale(1) !important; }
+    .task.missed .cki { opacity: 0 !important; transform: scale(0) rotate(-20deg) !important; }
+    .task.missed::before { background: var(--ro) !important; opacity: 0.4 !important; }
+    .task.shake { animation: shake 0.3s ease; }
+
     /* TASK CONTENT */
     .tc { flex:1; min-width:0 }
     .ttop { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px }
@@ -142,8 +162,7 @@
     /* BURST */
     .burst { position:absolute; pointer-events:none; top:50%; left:32px; width:0; height:0 }
     .pt { position:absolute; width:6px; height:6px; border-radius:50%; animation:ba .65s ease-out forwards }
-    @keyframes ba { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0} }
-
+    
     /* COMPLETION */
     .cc-card { display:none; text-align:center; padding:48px 28px; background:var(--card); border:1px solid var(--bdr); border-radius:20px; margin-top:24px }
     .cc-card.vis { display:block; animation:pi .5s cubic-bezier(.34,1.56,.64,1) both }
@@ -170,12 +189,16 @@
     @keyframes sd { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
     @keyframes pi { from{opacity:0;transform:scale(.88)} to{opacity:1;transform:scale(1)} }
     @keyframes fl { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+    @keyframes ba { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0} }
+    @keyframes pulse-glow { 0%{box-shadow:0 0 15px var(--ams)} 50%{box-shadow:0 0 25px rgba(232,150,60,0.4)} 100%{box-shadow:0 0 15px var(--ams)} }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
 
     /* RESPONSIVE */
     @media(max-width:480px) {
       .app{padding:0 12px 100px} .hdr{padding:32px 0 20px}
       .task{padding:14px;gap:11px} .ttitle{font-size:15px}
       .tb{font-size:11px;padding:9px 2px}
+      .miss-btn { opacity: 1; pointer-events: auto; } /* Always show miss button on mobile */
     }
   </style>
 </head>
@@ -220,7 +243,6 @@
       <div class="prog-t"><div class="prog-f" id="pf"></div></div>
     </div>
 
-    <!-- ══ ADJUST PANEL ══ -->
     <div class="adj-wrap">
       <button class="adj-toggle" onclick="toggleAdj()">
         <span>⚡</span>
@@ -249,8 +271,7 @@
 
         <div class="adj-off-msg" id="adj-off-msg">
           <strong>Day off mode active.</strong>
-          Showing only your 3 non-negotiables — workout, build/code, and sleep. Even 20 mins of coding counts. Hit those and the day isn't wasted.
-          <br><br>
+          Showing only your 3 non-negotiables — workout, build/code, and sleep. Even 20 mins of coding counts. Hit those and the day isn't wasted.<br><br>
           <button class="adj-apply" onclick="clearDayOff()">Show full schedule</button>
         </div>
 
@@ -264,7 +285,6 @@
       </div>
     </div>
 
-    <!-- Day-off header (shown above schedule) -->
     <div class="do-hdr" id="do-hdr">
       <div class="do-emoji">🌴</div>
       <div class="do-text">
@@ -324,7 +344,6 @@
     const WDS   = new Set(['monday','tuesday','wednesday','thursday','friday']);
     // Base times in minutes from midnight
     const BT = { WAKE_WD:380, LEAVE_WD:450, HOME_WD:960, WAKE_SAT:480, WAKE_SUN:510 };
-
     let streak   = parseInt(localStorage.getItem('tj_s')  || '0');
     let lastDone = localStorage.getItem('tj_ld') || '';
     let currentDay = DAYS[(new Date().getDay() + 6) % 7];
@@ -342,6 +361,7 @@
           </div>
           <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">${body}</div>
         </div>
+        <div class="miss-btn" onclick="toggleMissed(event, this)" title="Mark as missed">✕</div>
       </div>`;
     }
     function SEC(lbl) { return `<div class="slbl">${lbl}</div>`; }
@@ -366,7 +386,7 @@
       ${T('ro',1170,'2.5 hrs','afternoon',false,'Free Time',          '7:30 PM · 2.5 hrs', 'Girlfriend, games, basketball, YouTube — completely yours. Eat whenever it fits in.')}
       ${T('gr',1335,'45 min', 'afternoon',false,'Read + Wind Down',   '10:15 PM · 45 min', 'Naval Almanack, aerospace news, anything curious. Start getting off screens.')}
       ${T('sk',1380,'',       'afternoon',true, 'Sleep',              '11:00 PM (Max 12:00)','Everything you trained, studied, and built today gets locked in right here.')}`;
-
+    
     const satHTML = `
       <div class="do-nn-lbl">Non-Negotiables</div>
       ${SEC('Morning')}
@@ -460,9 +480,11 @@
 
     // ── BURST ──
     function spawn(task) {
-      const b = document.createElement('div'); b.className = 'burst'; task.appendChild(b);
+      const b = document.createElement('div');
+      b.className = 'burst'; task.appendChild(b);
       for (let i=0;i<12;i++) {
-        const p = document.createElement('div'); p.className = 'pt';
+        const p = document.createElement('div');
+        p.className = 'pt';
         const a=(i/12)*360, d=28+Math.random()*32, r=a*Math.PI/180;
         p.style.cssText=`background:${COLS[i%6]};--tx:${Math.cos(r)*d}px;--ty:${Math.sin(r)*d}px;left:${Math.random()*8-4}px;top:${Math.random()*8-4}px;animation-delay:${Math.random()*.08}s`;
         b.appendChild(p);
@@ -472,10 +494,36 @@
 
     // ── TOGGLE TASK ──
     function tg(event, task) {
-      if (event.target.isContentEditable) return;
+      // Ignore clicks if editing or clicking the 'Miss' button
+      if (event.target.isContentEditable || event.target.classList.contains('miss-btn')) return;
+      
+      // If marked missed, clear the missed status first
+      if (task.classList.contains('missed')) {
+        task.classList.remove('missed');
+      }
+      
       const was = task.classList.contains('done');
       task.classList.toggle('done');
       if (!was) { spawn(task); playCheckSound(); }
+      updProg(task.dataset.day); save();
+    }
+    
+    // ── TOGGLE MISSED ──
+    function toggleMissed(event, btn) {
+      event.stopPropagation(); // Stop task click event from firing
+      const task = btn.closest('.task');
+      
+      if (task.classList.contains('done')) {
+        task.classList.remove('done');
+      }
+      
+      task.classList.toggle('missed');
+      
+      if (task.classList.contains('missed')) {
+        task.classList.add('shake');
+        setTimeout(() => task.classList.remove('shake'), 300);
+      }
+      
       updProg(task.dataset.day); save();
     }
 
@@ -492,12 +540,15 @@
       const all=s.querySelectorAll('.task'), done=s.querySelectorAll('.task.done').length, total=all.length;
       document.getElementById('pf').style.width = (total ? done/total*100 : 0)+'%';
       document.getElementById('pt').textContent = done+' / '+total+' done';
+      
       const card = document.getElementById('completion-'+day);
       const weekCard = document.getElementById('week-completion');
       const tabBtn = document.getElementById('tab-'+day);
+
       if (done===total && total>0) {
         card.classList.add('vis'); tabBtn.classList.add('day-completed');
         const today = new Date().toDateString();
+        
         if (!card.dataset.played) {
           playDayCompleteSound(); confetti(80); card.dataset.played="true";
           if (lastDone!==today) {
@@ -511,14 +562,15 @@
           setTimeout(()=>{ playWeekCompleteSound(); confetti(300); weekCard.scrollIntoView({behavior:'smooth',block:'center'}); },500);
         }
       } else {
-        card.classList.remove('vis'); card.dataset.played=""; tabBtn.classList.remove('day-completed'); weekCard.classList.remove('vis');
+        card.classList.remove('vis');
+        card.dataset.played=""; tabBtn.classList.remove('day-completed'); weekCard.classList.remove('vis');
       }
     }
 
     // ── RESET ──
     function resetAll() {
       DAYS.forEach(d => {
-        document.querySelectorAll('#'+d+' .task').forEach(t=>t.classList.remove('done'));
+        document.querySelectorAll('#'+d+' .task').forEach(t=>{ t.classList.remove('done'); t.classList.remove('missed'); });
         document.getElementById('tab-'+d).classList.remove('day-completed');
       });
       resetAllTimes();
@@ -535,6 +587,7 @@
         document.querySelectorAll('#'+d+' .task').forEach((t,i) => {
           const td=st[d][i]; if (!td) return;
           if (td.done)  t.classList.add('done');
+          if (td.missed) t.classList.add('missed');
           if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
           if (td.time)  t.querySelector('.ttime').innerHTML  = td.time;
           if (td.body)  t.querySelector('.tbody').innerHTML  = td.body;
@@ -548,6 +601,7 @@
         const s=document.getElementById(d); if (!s) return;
         st[d]=Array.from(s.querySelectorAll('.task')).map(t=>({
           done:t.classList.contains('done'),
+          missed:t.classList.contains('missed'),
           title:t.querySelector('.ttitle').innerHTML,
           time:t.querySelector('.ttime').innerHTML,
           body:t.querySelector('.tbody').innerHTML
@@ -571,7 +625,8 @@
 
     // ── HIGHLIGHT CURRENT TASK ──
     function parseTimeMins(str) {
-      const m=str.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/i); if (!m) return null;
+      const m=str.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/i);
+      if (!m) return null;
       let h=parseInt(m[1]),min=parseInt(m[2]); const ap=m[3]?m[3].toLowerCase():null;
       if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0;
       return h*60+min;
@@ -621,7 +676,6 @@
     // ADJUST PANEL
     // ════════════════════════════════════════
     let adjOpen = false;
-
     function toggleAdj() {
       adjOpen = !adjOpen;
       document.getElementById('adj-body').classList.toggle('open', adjOpen);
@@ -648,9 +702,7 @@
       ['adj-wake-field','adj-home-field','adj-off-msg','adj-note','adj-warn-msg'].forEach(id=>document.getElementById(id).classList.remove('show'));
       DAYS.forEach(d=>document.getElementById(d).classList.remove('day-off'));
       document.getElementById('do-hdr').classList.remove('show');
-      // Show/hide "Home late" — weekdays only
       document.getElementById('adj-home-btn').classList.toggle('hidden', !WDS.has(day));
-      // Default time input values
       document.getElementById('wake-inp').value = WDS.has(day) ? '06:20' : day==='saturday' ? '08:00' : '08:30';
       document.getElementById('home-inp').value = '16:00';
     }
@@ -676,7 +728,8 @@
     }
 
     function shiftGroup(grp, delayMins, cap) {
-      const sched = document.getElementById(currentDay); if (!sched) return;
+      const sched = document.getElementById(currentDay);
+      if (!sched) return;
       let warn = false;
       sched.querySelectorAll(`.task[data-group="${grp}"]`).forEach(task => {
         const base=parseInt(task.dataset.base||'0'), dur=task.dataset.dur||'';
