@@ -453,17 +453,17 @@
       ${T('sk',1380,'',       'afternoon',true, 'Sleep',                 '11:00 PM',           'Monday starts with a full battery.')}`;
 
     // ── DELAY TASK LOGIC ──
-// ── DELAY TASK LOGIC (CASCADING) ──
+// This version keeps the whole chain in sync so every later task moves too.
 let targetDelayTask = null;
 
 function openDelayMenu(event, btn) {
-  event.stopPropagation(); 
+  event.stopPropagation();
   targetDelayTask = btn.closest('.task');
 
   const menu = document.getElementById('delay-menu');
   const rect = btn.getBoundingClientRect();
 
-  menu.style.left = Math.max(10, rect.left - 150) + 'px'; 
+  menu.style.left = Math.max(10, rect.left - 150) + 'px';
   menu.style.top = (rect.bottom + window.scrollY + 8) + 'px';
   menu.classList.add('show');
 }
@@ -480,68 +480,64 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Helper function to push back the target task AND all tasks after it
-function shiftTasksFrom(startTask, shiftMins) {
+function syncTaskDisplay(task) {
+  const base = parseInt(task.dataset.base || '0', 10);
+  const dur = task.dataset.dur || '';
+  const ttime = task.querySelector('.ttime');
+  if (ttime && Number.isFinite(base) && base > 0) {
+    ttime.textContent = mToDisp(base, dur);
+  }
+}
+
+function cascadeDelayFrom(startTask, shiftMins) {
   const sched = startTask.closest('.sched');
   if (!sched || !Number.isFinite(shiftMins) || shiftMins === 0) return;
 
-  // Get all tasks in the current day's schedule
   const tasks = Array.from(sched.querySelectorAll('.task'));
   const startIndex = tasks.indexOf(startTask);
-
   if (startIndex === -1) return;
 
-  // Loop from the delayed task down to the end of the day
   for (let i = startIndex; i < tasks.length; i++) {
-    const t = tasks[i];
-    const base = parseInt(t.dataset.base || '0');
-    const dur = t.dataset.dur || '';
+    const task = tasks[i];
+    const base = parseInt(task.dataset.base || '0', 10);
+    if (!Number.isFinite(base) || base <= 0) continue;
 
-    if (base > 0) {
-      const newBase = base + shiftMins;
-      t.dataset.base = newBase;
-      t.querySelector('.ttime').textContent = mToDisp(newBase, dur);
-      t.classList.add('t-warn'); // Highlights shifted tasks in red so you know they changed
-    }
+    const newBase = base + shiftMins;
+    task.dataset.base = String(newBase);
+    syncTaskDisplay(task);
+    task.classList.add('t-warn');
   }
 }
 
 function finishDelayUpdate() {
+  const day = targetDelayTask?.dataset.day;
   save();
+  if (day) updProg(day);
   highlightCurrentTask();
   closeDelayMenu();
 }
 
 function applyDelay(mins) {
   if (!targetDelayTask) return;
-
-  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
-
-  if (currentBase > 0) {
-    // Shift this task and all subsequent tasks by 'mins'
-    shiftTasksFrom(targetDelayTask, mins);
+  const currentBase = parseInt(targetDelayTask.dataset.base || '0', 10);
+  if (Number.isFinite(currentBase) && currentBase > 0) {
+    cascadeDelayFrom(targetDelayTask, mins);
   }
-
   finishDelayUpdate();
 }
 
 function applyCustomDelay() {
   if (!targetDelayTask) return;
   const timeVal = document.getElementById('dm-time').value;
-  if (!timeVal) return; 
+  if (!timeVal) return;
 
   const [hStr, mStr] = timeVal.split(':');
-  const newBase = parseInt(hStr) * 60 + parseInt(mStr);
-  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
+  const newBase = parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
+  const currentBase = parseInt(targetDelayTask.dataset.base || '0', 10);
 
-  if (currentBase > 0) {
-    // Calculate how many minutes we are shifting by
-    const diffMins = newBase - currentBase;
-
-    // Shift this task and all subsequent tasks by the difference
-    shiftTasksFrom(targetDelayTask, diffMins);
+  if (Number.isFinite(currentBase) && currentBase > 0 && Number.isFinite(newBase)) {
+    cascadeDelayFrom(targetDelayTask, newBase - currentBase);
   }
-
   finishDelayUpdate();
 }
 
