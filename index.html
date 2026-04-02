@@ -340,9 +340,9 @@
         <button class="dm-btn" onclick="applyDelay(20)">+20 min</button>
       </div>
       <div class="dm-custom">
-        <input type="number" id="dm-time" placeholder="mins" />
-        <button class="dm-btn" onclick="applyCustomDelay()">Delay</button>
-      </div>
+  <input type="time" id="dm-time" />
+  <button class="dm-btn" onclick="applyCustomDelay()">Set Time</button>
+</div>
     </div>
 
     <div id="schedule-container"></div>
@@ -633,24 +633,31 @@
       finishDelayUpdate();
     }
 
-    function applyCustomDelay() {
+   function applyCustomDelay() {
+  if (!targetDelayTask) return;
   const timeVal = document.getElementById('dm-time').value;
-  if (!timeVal || !activeDelayTask) return;
+  if (!timeVal) return;
 
-  // 1. get the minutes from the input (e.g., "13:00" -> 780)
-  const [h, m] = timeVal.split(':').map(Number);
-  const newBase = h * 60 + m;
+  // 1. turn the input (like "13:00") into minutes (780)
+  const [hStr, mStr] = timeVal.split(':');
+  const newBase = parseInt(hStr) * 60 + parseInt(mStr);
+  
+  // 2. get where the task is currently at in minutes
+  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
 
-  // 2. get the current adjusted time of the task
-  const currentBase = parseInt(activeDelayTask.dataset.base);
+  if (currentBase > 0) {
+    // 3. find the difference (e.g. if task was 6:00 and you put 13:00, diff is 420)
+    const diffMins = newBase - currentBase;
+    
+    // 4. push this task and all subsequent ones by that exact gap
+    if (diffMins !== 0) {
+      shiftTasksFrom(targetDelayTask, diffMins);
+    }
+  }
 
-  // 3. calculate the gap (e.g., if it was 6:00am and you put 1:00pm, diff is 420 mins)
-  const diff = newBase - currentBase;
-
-  // 4. shift this task and all following ones by that gap
-  shiftTasksFrom(activeDelayTask, diff);
-
-  closeDelayMenu();
+  // clear the box and close
+  document.getElementById('dm-time').value = '';
+  finishDelayUpdate();
 }
 
     // ── BUILD DOM ──
