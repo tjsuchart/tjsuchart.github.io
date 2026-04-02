@@ -159,7 +159,7 @@
     .delay-btn:hover { background: var(--ams); color: var(--am); border-color: var(--am); }
     
     #delay-menu {
-      position: absolute; display: none; flex-direction: column; gap: 8px;
+      position: fixed; display: none; flex-direction: column; gap: 8px;
       background: var(--card); border: 1px solid var(--bdr); border-radius: 12px;
       padding: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 10000;
     }
@@ -401,23 +401,27 @@
     try { offModes = JSON.parse(localStorage.getItem('tj_off_modes') || '{}') || {}; } catch(e) { offModes = {}; }
     let currentDay = DAYS[(new Date().getDay() + 6) % 7];
 
-    function T(c, base, dur, grp, nn, title, time, body) { 
-  return `<div class="task ${c}" onclick="tg(event,this)" data-base="${base}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}> 
-    <div class="ck"><span class="cki">✓</span></div> 
-    <div class="tc"> 
-      <div class="ttop"> 
-        <div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">${title}</div> 
-        <div class="ttime" ondblclick="mkEd(this)" onblur="svEd(this)">${time}</div> 
-      </div> 
-      <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">${body}</div> 
-    </div> 
-    <div class="delay-btn" onclick="openDelayMenu(event, this)" title="Delay Task">⏱️</div>
-    <div class="miss-btn" onclick="toggleMissed(event, this)" title="Mark as missed">✕</div> 
-  </div>`;
-}
+    // ── TASK BUILDER ──
+    // data-orig-base stores the canonical original time and is NEVER mutated.
+    // data-base is the live/adjusted time used for display and saves.
+    function T(c, base, dur, grp, nn, title, time, body) {
+      return `<div class="task ${c}" onclick="tg(event,this)" data-base="${base}" data-orig-base="${base}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}>
+        <div class="ck"><span class="cki">✓</span></div>
+        <div class="tc">
+          <div class="ttop">
+            <div class="ttitle" ondblclick="mkEd(this)" onblur="svEd(this)">${title}</div>
+            <div class="ttime" ondblclick="mkEd(this)" onblur="svEd(this)">${time}</div>
+          </div>
+          <div class="tbody" ondblclick="mkEd(this)" onblur="svEd(this)">${body}</div>
+        </div>
+        <div class="delay-btn" onclick="openDelayMenu(event, this)" title="Delay Task">⏱️</div>
+        <div class="miss-btn" onclick="toggleMissed(event, this)" title="Mark as missed">✕</div>
+      </div>`;
+    }
+
     function SEC(lbl) { return `<div class="slbl">${lbl}</div>`; }
 
-    // ── SCHEDULES (UPDATED WIND DOWN) ──
+    // ── SCHEDULES ──
     const wdHTML = `
       <div class="do-nn-lbl">Non-Negotiables</div>
       ${SEC('Morning')}
@@ -437,7 +441,7 @@
       ${T('ro',1170,'3.25 hrs','afternoon',false,'Free Time',          '7:30 PM · 3.25 hrs', 'Girlfriend, games, basketball, or YouTube.')}
       ${T('gr',1365,'15 min', 'afternoon',false,'Wind Down',         '10:45 PM · 15 min', 'Get off screens, stretch, and prepare for sleep.')}
       ${T('sk',1380,'',       'afternoon',true, 'Sleep',              '11:00 PM (Max 12:00)','Everything you did today gets locked in here.')}`;
-    
+
     const satHTML = `
       <div class="do-nn-lbl">Non-Negotiables</div>
       ${SEC('Morning')}
@@ -561,99 +565,91 @@
     }
 
     // ── DELAY TASK LOGIC ──
-// ── DELAY TASK LOGIC (CASCADING) ──
-let targetDelayTask = null;
+    // shiftTasksFrom: shifts the target task AND every task after it,
+    // skipping fixed-group tasks (e.g. School) which never move.
+    let targetDelayTask = null;
 
-function openDelayMenu(event, btn) {
-  event.stopPropagation(); 
-  targetDelayTask = btn.closest('.task');
+    function openDelayMenu(event, btn) {
+      event.stopPropagation();
+      targetDelayTask = btn.closest('.task');
 
-  const menu = document.getElementById('delay-menu');
-  const rect = btn.getBoundingClientRect();
+      const menu = document.getElementById('delay-menu');
+      const rect = btn.getBoundingClientRect();
 
-  menu.style.left = Math.max(10, rect.left - 150) + 'px'; 
-  menu.style.top = (rect.bottom + window.scrollY + 8) + 'px';
-  menu.classList.add('show');
-}
-
-function closeDelayMenu() {
-  document.getElementById('delay-menu').classList.remove('show');
-  targetDelayTask = null;
-}
-
-document.addEventListener('click', (e) => {
-  const menu = document.getElementById('delay-menu');
-  if (menu.classList.contains('show') && !menu.contains(e.target) && !e.target.classList.contains('delay-btn')) {
-    closeDelayMenu();
-  }
-});
-
-// Helper function to push back the target task AND all tasks after it
-function shiftTasksFrom(startTask, shiftMins) {
-  const sched = startTask.closest('.sched');
-  if (!sched || !Number.isFinite(shiftMins) || shiftMins === 0) return;
-
-  // Get all tasks in the current day's schedule
-  const tasks = Array.from(sched.querySelectorAll('.task'));
-  const startIndex = tasks.indexOf(startTask);
-
-  if (startIndex === -1) return;
-
-  // Loop from the delayed task down to the end of the day
-  for (let i = startIndex; i < tasks.length; i++) {
-    const t = tasks[i];
-    const base = parseInt(t.dataset.base || '0');
-    const dur = t.dataset.dur || '';
-
-    if (base > 0) {
-      const newBase = base + shiftMins;
-      t.dataset.base = newBase;
-      t.querySelector('.ttime').textContent = mToDisp(newBase, dur);
-      t.classList.add('t-warn'); // Highlights shifted tasks in red so you know they changed
+      // position: fixed so we use raw viewport coords, no scrollY needed
+      const left = Math.min(Math.max(10, rect.left - 150), window.innerWidth - 220);
+      const top  = Math.min(rect.bottom + 8, window.innerHeight - 160);
+      menu.style.left = left + 'px';
+      menu.style.top  = top + 'px';
+      menu.classList.add('show');
     }
-  }
-}
 
-function finishDelayUpdate() {
-  save();
-  highlightCurrentTask();
-  closeDelayMenu();
-}
+    function closeDelayMenu() {
+      document.getElementById('delay-menu').classList.remove('show');
+      targetDelayTask = null;
+    }
 
-function applyDelay(mins) {
-  if (!targetDelayTask) return;
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('delay-menu');
+      if (menu.classList.contains('show') && !menu.contains(e.target) && !e.target.classList.contains('delay-btn')) {
+        closeDelayMenu();
+      }
+    });
 
-  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
+    // Cascade shift: shift target task and all tasks after it, skipping fixed-group tasks.
+    function shiftTasksFrom(startTask, shiftMins) {
+      const sched = startTask.closest('.sched');
+      if (!sched || !Number.isFinite(shiftMins) || shiftMins === 0) return;
 
-  if (currentBase > 0) {
-    // Shift this task and all subsequent tasks by 'mins'
-    shiftTasksFrom(targetDelayTask, mins);
-  }
+      const tasks = Array.from(sched.querySelectorAll('.task'));
+      const startIndex = tasks.indexOf(startTask);
+      if (startIndex === -1) return;
 
-  finishDelayUpdate();
-}
+      for (let i = startIndex; i < tasks.length; i++) {
+        const t = tasks[i];
+        // Never move fixed-group tasks (e.g. School has a hard start time)
+        if (t.dataset.group === 'fixed') continue;
 
-function applyCustomDelay() {
-  if (!targetDelayTask) return;
-  const timeVal = document.getElementById('dm-time').value;
-  if (!timeVal) return; 
+        const base = parseInt(t.dataset.base || '0');
+        if (base > 0) {
+          const newBase = base + shiftMins;
+          t.dataset.base = String(newBase);
+          t.querySelector('.ttime').textContent = mToDisp(newBase, t.dataset.dur || '');
+          t.classList.add('t-warn');
+        }
+      }
+    }
 
-  const [hStr, mStr] = timeVal.split(':');
-  const newBase = parseInt(hStr) * 60 + parseInt(mStr);
-  const currentBase = parseInt(targetDelayTask.dataset.base || '0');
+    function finishDelayUpdate() {
+      save();
+      highlightCurrentTask();
+      closeDelayMenu();
+    }
 
-  if (currentBase > 0) {
-    // Calculate how many minutes we are shifting by
-    const diffMins = newBase - currentBase;
+    function applyDelay(mins) {
+      if (!targetDelayTask) return;
+      shiftTasksFrom(targetDelayTask, mins);
+      finishDelayUpdate();
+    }
 
-    // Shift this task and all subsequent tasks by the difference
-    shiftTasksFrom(targetDelayTask, diffMins);
-  }
+    function applyCustomDelay() {
+      if (!targetDelayTask) return;
+      const timeVal = document.getElementById('dm-time').value;
+      if (!timeVal) return;
 
-  finishDelayUpdate();
-}
+      const [hStr, mStr] = timeVal.split(':');
+      const newBase    = parseInt(hStr) * 60 + parseInt(mStr);
+      const currentBase = parseInt(targetDelayTask.dataset.base || '0');
 
-// ── BUILD DOM ──
+      if (currentBase > 0) {
+        const diffMins = newBase - currentBase;
+        if (diffMins !== 0) shiftTasksFrom(targetDelayTask, diffMins);
+      }
+
+      finishDelayUpdate();
+    }
+
+    // ── BUILD DOM ──
     const container = document.getElementById('schedule-container');
     DAYS.forEach(day => {
       const d = document.createElement('div');
@@ -738,7 +734,7 @@ function applyCustomDelay() {
       if (!was) { spawn(task); playCheckSound(); }
       updProg(task.dataset.day); save();
     }
-    
+
     function toggleMissed(event, btn) {
       event.stopPropagation();
       const task = btn.closest('.task');
@@ -769,7 +765,7 @@ function applyCustomDelay() {
       const total = visible.length;
       document.getElementById('pf').style.width = (total ? done/total*100 : 0)+'%';
       document.getElementById('pt').textContent = done+' / '+total+' done';
-      
+
       const card = document.getElementById('completion-'+day);
       const weekCard = document.getElementById('week-completion');
       const tabBtn = document.getElementById('tab-'+day);
@@ -809,51 +805,54 @@ function applyCustomDelay() {
     }
 
     function applyState(st) {
-  if (!st) return;
-  DAYS.forEach(d => {
-    if (!st[d]) return;
-    document.querySelectorAll('#' + d + ' .task').forEach((t, i) => {
-      const td = st[d][i];
-      if (!td) return;
-      if (td.done) t.classList.add('done');
-      if (td.missed) t.classList.add('missed');
-      if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
-      if (td.time) t.querySelector('.ttime').innerHTML = td.time;
-      if (td.body) t.querySelector('.tbody').innerHTML = td.body;
-      if (td.base !== undefined) t.dataset.base = td.base;
-      if (td.dur !== undefined) t.dataset.dur = td.dur;
-    });
-  });
+      if (!st) return;
+      DAYS.forEach(d => {
+        if (!st[d]) return;
+        document.querySelectorAll('#' + d + ' .task').forEach((t, i) => {
+          const td = st[d][i];
+          if (!td) return;
+          if (td.done)  t.classList.add('done');
+          if (td.missed) t.classList.add('missed');
+          if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
+          if (td.time)  t.querySelector('.ttime').innerHTML  = td.time;
+          if (td.body)  t.querySelector('.tbody').innerHTML  = td.body;
+          // Restore live base (adjusted time). origBase stays as-baked from HTML.
+          if (td.base !== undefined) t.dataset.base = td.base;
+          if (td.dur  !== undefined) t.dataset.dur  = td.dur;
+        });
+      });
 
-  DAYS.forEach(d => {
-    syncOffModeUI(d, offModes[d] || 'normal');
-    updProg(d);
-  });
-  highlightCurrentTask();
-}
+      DAYS.forEach(d => {
+        syncOffModeUI(d, offModes[d] || 'normal');
+        updProg(d);
+      });
+      highlightCurrentTask();
+    }
+
     function save() {
-  const st = {};
-  DAYS.forEach(d => {
-    const s = document.getElementById(d);
-    if (!s) return;
-    st[d] = Array.from(s.querySelectorAll('.task')).map(t => ({
-      done: t.classList.contains('done'),
-      missed: t.classList.contains('missed'),
-      title: t.querySelector('.ttitle').innerHTML,
-      time: t.querySelector('.ttime').innerHTML,
-      body: t.querySelector('.tbody').innerHTML,
-      base: t.dataset.base,
-      dur: t.dataset.dur
-    }));
-  });
-  
-  if (isCloudActive) {
-    db.collection("schedules").doc("my_personal_schedule").set({tasks:st,streak,lastDone,offModes}).catch(e=>console.error(e));
-  } else {
-    localStorage.setItem('tj_st_v5', JSON.stringify(st));
-    localStorage.setItem('tj_off_modes', JSON.stringify(offModes));
-  }
-}
+      const st = {};
+      DAYS.forEach(d => {
+        const s = document.getElementById(d);
+        if (!s) return;
+        st[d] = Array.from(s.querySelectorAll('.task')).map(t => ({
+          done:   t.classList.contains('done'),
+          missed: t.classList.contains('missed'),
+          title:  t.querySelector('.ttitle').innerHTML,
+          time:   t.querySelector('.ttime').innerHTML,
+          body:   t.querySelector('.tbody').innerHTML,
+          base:   t.dataset.base,
+          dur:    t.dataset.dur
+        }));
+      });
+
+      if (isCloudActive) {
+        db.collection("schedules").doc("my_personal_schedule").set({tasks:st,streak,lastDone,offModes}).catch(e=>console.error(e));
+      } else {
+        localStorage.setItem('tj_st_v5', JSON.stringify(st));
+        localStorage.setItem('tj_off_modes', JSON.stringify(offModes));
+      }
+    }
+
     function load() {
       if (isCloudActive) {
         db.collection("schedules").doc("my_personal_schedule").get().then(doc=>{
@@ -880,6 +879,7 @@ function applyCustomDelay() {
       if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0;
       return h*60+min;
     }
+
     function highlightCurrentTask() {
       const now=new Date(), todayStr=DAYS[(now.getDay()+6)%7], cur=now.getHours()*60+now.getMinutes();
       DAYS.forEach(d=>{
@@ -973,6 +973,7 @@ function applyCustomDelay() {
     }
 
     function tToM(val) { const [h,m]=val.split(':').map(Number); return h*60+m; }
+
     function mToDisp(mins, dur) {
       const h24=Math.floor(mins/60)%24, m=mins%60;
       const ap=h24>=12?'PM':'AM', h12=h24%12||12;
@@ -980,66 +981,85 @@ function applyCustomDelay() {
       return dur?`${t} · ${dur}`:t;
     }
 
+    // ── WAKE / HOME ADJUSTMENT ──
+    // These always compute from data-orig-base so re-applying with a different
+    // time gives consistent results (not compounding errors).
     function applyWake() {
-      const actual = tToM(document.getElementById('wake-inp').value);
-      const base = WDS.has(currentDay) ? BT.WAKE_WD : currentDay==='saturday' ? BT.WAKE_SAT : BT.WAKE_SUN;
-      shiftGroup('morning', actual-base, WDS.has(currentDay) ? BT.LEAVE_WD : null);
+      const actual  = tToM(document.getElementById('wake-inp').value);
+      const baseWake = WDS.has(currentDay) ? BT.WAKE_WD : currentDay==='saturday' ? BT.WAKE_SAT : BT.WAKE_SUN;
+      const delta    = actual - baseWake;
+      shiftGroupFromOrig('morning', delta, WDS.has(currentDay) ? BT.LEAVE_WD : null);
     }
 
     function applyHome() {
       const actual = tToM(document.getElementById('home-inp').value);
-      shiftGroup('afternoon', actual-BT.HOME_WD, null);
+      const delta   = actual - BT.HOME_WD;
+      shiftGroupFromOrig('afternoon', delta, null);
     }
 
-    function shiftGroup(grp, delayMins, cap) {
+    // shiftGroupFromOrig: always derives new display time from data-orig-base + delta.
+    // This makes wake/home adjustments idempotent — applying twice gives the same result.
+    // It also updates data-base so subsequent delay/cascade operations work correctly.
+    function shiftGroupFromOrig(grp, delayMins, cap) {
       const sched = document.getElementById(currentDay);
       if (!sched) return;
       let warn = false;
       sched.querySelectorAll(`.task[data-group="${grp}"]`).forEach(task => {
-        const base=parseInt(task.dataset.base||'0'), dur=task.dataset.dur||'';
-        const adj=base+delayMins;
+        const origBase = parseInt(task.dataset.origBase || task.dataset.base || '0');
+        const dur      = task.dataset.dur || '';
+        const adj      = origBase + delayMins;
+        // Update both the live base AND the display
+        task.dataset.base = String(adj);
         task.querySelector('.ttime').textContent = mToDisp(adj, dur);
-        const late = (cap && adj>=cap) || (base>=1350 && adj>=1440);
+        const late = (cap && adj >= cap) || (origBase >= 1350 && adj >= 1440);
         task.classList.toggle('t-warn', late);
-        if(late) warn=true;
+        if (late) warn = true;
       });
       document.getElementById('adj-warn-msg').classList.toggle('show', warn);
-      highlightCurrentTask(); save();
+      highlightCurrentTask();
+      save();
     }
 
+    // resetDayTimes: restore current day's tasks to their original baked times.
+    // Uses data-orig-base so it's always correct even after delays have mutated data-base.
     function resetDayTimes() {
-      const sched=document.getElementById(currentDay); if (!sched) return;
-      sched.querySelectorAll('.task[data-group="morning"],.task[data-group="afternoon"]').forEach(task=>{
-        const base=parseInt(task.dataset.base||'0'), dur=task.dataset.dur||'';
-        if(base>0) task.querySelector('.ttime').textContent=mToDisp(base,dur);
+      const sched = document.getElementById(currentDay);
+      if (!sched) return;
+      sched.querySelectorAll('.task').forEach(task => {
+        const origBase = parseInt(task.dataset.origBase || task.dataset.base || '0');
+        const dur      = task.dataset.dur || '';
+        if (origBase > 0) {
+          task.dataset.base = String(origBase);
+          task.querySelector('.ttime').textContent = mToDisp(origBase, dur);
+        }
         task.classList.remove('t-warn');
       });
       document.getElementById('adj-warn-msg').classList.remove('show');
-      highlightCurrentTask(); save();
+      highlightCurrentTask();
+      save();
     }
 
+    // resetAllTimes: same as above but for every day (used by full week reset).
     function resetAllTimes() {
-      DAYS.forEach(d=>{
-        document.querySelectorAll(`#${d} .task[data-group="morning"],#${d} .task[data-group="afternoon"]`).forEach(task=>{
-          const base=parseInt(task.dataset.base||'0'), dur=task.dataset.dur||'';
-          if(base>0) task.querySelector('.ttime').textContent=mToDisp(base,dur);
+      DAYS.forEach(d => {
+        document.querySelectorAll(`#${d} .task`).forEach(task => {
+          const origBase = parseInt(task.dataset.origBase || task.dataset.base || '0');
+          const dur      = task.dataset.dur || '';
+          if (origBase > 0) {
+            task.dataset.base = String(origBase);
+            task.querySelector('.ttime').textContent = mToDisp(origBase, dur);
+          }
           task.classList.remove('t-warn');
         });
       });
-      highlightCurrentTask(); save();
+      highlightCurrentTask();
+      save();
     }
 
     function setDayOff() {
       const active = offModes[currentDay] || 'productive';
       offModes[currentDay] = active;
       syncOffModeUI(currentDay, active);
-      save();
-      updProg(currentDay);
-      highlightCurrentTask();
-    }
-    function clearDayOff() {
-      offModes[currentDay] = 'normal';
-      syncOffModeUI(currentDay, 'normal');
       save();
       updProg(currentDay);
       highlightCurrentTask();
