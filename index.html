@@ -340,8 +340,8 @@
         <button class="dm-btn" onclick="applyDelay(20)">+20 min</button>
       </div>
       <div class="dm-custom">
-        <input type="time" id="dm-time" />
-        <button class="dm-btn" onclick="applyCustomDelay()">Set Time</button>
+        <input type="number" id="dm-time" placeholder="mins" />
+        <button class="dm-btn" onclick="applyCustomDelay()">Delay</button>
       </div>
     </div>
 
@@ -634,21 +634,15 @@
     }
 
     function applyCustomDelay() {
-      if (!targetDelayTask) return;
-      const timeVal = document.getElementById('dm-time').value;
-      if (!timeVal) return;
+  if (!targetDelayTask) return;
+  const mins = parseInt(document.getElementById('dm-time').value);
+  
+  if (!mins || isNaN(mins)) return; // does nothing if it's empty
 
-      const [hStr, mStr] = timeVal.split(':');
-      const newBase    = parseInt(hStr) * 60 + parseInt(mStr);
-      const currentBase = parseInt(targetDelayTask.dataset.base || '0');
-
-      if (currentBase > 0) {
-        const diffMins = newBase - currentBase;
-        if (diffMins !== 0) shiftTasksFrom(targetDelayTask, diffMins);
-      }
-
-      finishDelayUpdate();
-    }
+  shiftTasksFrom(targetDelayTask, mins);
+  document.getElementById('dm-time').value = ''; // clears the box
+  finishDelayUpdate();
+}
 
     // ── BUILD DOM ──
     const container = document.getElementById('schedule-container');
