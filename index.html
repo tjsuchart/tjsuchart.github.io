@@ -402,10 +402,11 @@
     let currentDay = DAYS[(new Date().getDay() + 6) % 7];
 
     // ── TASK BUILDER ──
-    // data-orig-base stores the canonical original time and is NEVER mutated.
-    // data-base is the live/adjusted time used for display and saves.
+    // data-orig-base: canonical original time in minutes. NEVER mutated.
+    // data-orig-time: canonical original display string. NEVER mutated.
+    // data-base: live/adjusted time in minutes. Updated by all time operations.
     function T(c, base, dur, grp, nn, title, time, body) {
-      return `<div class="task ${c}" onclick="tg(event,this)" data-base="${base}" data-orig-base="${base}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}>
+      return `<div class="task ${c}" onclick="tg(event,this)" data-base="${base}" data-orig-base="${base}" data-orig-time="${time}" data-dur="${dur}" data-group="${grp}" ${nn ? 'data-nn="true"' : ''}>
         <div class="ck"><span class="cki">✓</span></div>
         <div class="tc">
           <div class="ttop">
@@ -811,14 +812,30 @@
         document.querySelectorAll('#' + d + ' .task').forEach((t, i) => {
           const td = st[d][i];
           if (!td) return;
-          if (td.done)  t.classList.add('done');
+          if (td.done)   t.classList.add('done');
           if (td.missed) t.classList.add('missed');
-          if (td.title) t.querySelector('.ttitle').innerHTML = td.title;
-          if (td.time)  t.querySelector('.ttime').innerHTML  = td.time;
-          if (td.body)  t.querySelector('.tbody').innerHTML  = td.body;
-          // Restore live base (adjusted time). origBase stays as-baked from HTML.
-          if (td.base !== undefined) t.dataset.base = td.base;
-          if (td.dur  !== undefined) t.dataset.dur  = td.dur;
+          if (td.title)  t.querySelector('.ttitle').innerHTML = td.title;
+          if (td.body)   t.querySelector('.tbody').innerHTML  = td.body;
+          if (td.dur !== undefined) t.dataset.dur = td.dur;
+
+          // SELF-HEALING TIME DISPLAY:
+          // Old buggy code updated the display but never wrote back to data-base,
+          // producing corrupted saves like "3:40 AM" display with base=380 (6:20 AM).
+          // Fix: if saved base === orig base the schedule was never adjusted —
+          // restore the original display text to clear any corrupted string.
+          // If saved base !== orig base, times were genuinely changed — recompute
+          // display from the numeric base rather than trusting the stored string.
+          const origBase  = parseInt(t.dataset.origBase || '0');
+          const savedBase = td.base !== undefined ? parseInt(td.base) : origBase;
+          t.dataset.base  = String(savedBase);
+
+          if (savedBase === origBase) {
+            // Not adjusted — use data-orig-time (heals corrupted display saves)
+            t.querySelector('.ttime').textContent = t.dataset.origTime || td.time || '';
+          } else {
+            // Genuinely adjusted — recompute from numeric base for accuracy
+            t.querySelector('.ttime').textContent = mToDisp(savedBase, t.dataset.dur || '');
+          }
         });
       });
 
@@ -1021,16 +1038,18 @@
     }
 
     // resetDayTimes: restore current day's tasks to their original baked times.
-    // Uses data-orig-base so it's always correct even after delays have mutated data-base.
+    // Uses data-orig-base and data-orig-time so special displays like
+    // "8:00 AM – 4:00 PM" (School) and "11:00 PM (Max 12:00)" (Sleep) restore correctly.
     function resetDayTimes() {
       const sched = document.getElementById(currentDay);
       if (!sched) return;
       sched.querySelectorAll('.task').forEach(task => {
-        const origBase = parseInt(task.dataset.origBase || task.dataset.base || '0');
-        const dur      = task.dataset.dur || '';
+        const origBase = parseInt(task.dataset.origBase || '0');
         if (origBase > 0) {
           task.dataset.base = String(origBase);
-          task.querySelector('.ttime').textContent = mToDisp(origBase, dur);
+          // data-orig-time preserves special displays; fall back to mToDisp if absent
+          task.querySelector('.ttime').textContent =
+            task.dataset.origTime || mToDisp(origBase, task.dataset.dur || '');
         }
         task.classList.remove('t-warn');
       });
@@ -1043,11 +1062,11 @@
     function resetAllTimes() {
       DAYS.forEach(d => {
         document.querySelectorAll(`#${d} .task`).forEach(task => {
-          const origBase = parseInt(task.dataset.origBase || task.dataset.base || '0');
-          const dur      = task.dataset.dur || '';
+          const origBase = parseInt(task.dataset.origBase || '0');
           if (origBase > 0) {
             task.dataset.base = String(origBase);
-            task.querySelector('.ttime').textContent = mToDisp(origBase, dur);
+            task.querySelector('.ttime').textContent =
+              task.dataset.origTime || mToDisp(origBase, task.dataset.dur || '');
           }
           task.classList.remove('t-warn');
         });
