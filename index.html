@@ -634,14 +634,23 @@
     }
 
     function applyCustomDelay() {
-  if (!targetDelayTask) return;
-  const mins = parseInt(document.getElementById('dm-time').value);
-  
-  if (!mins || isNaN(mins)) return; // does nothing if it's empty
+  const timeVal = document.getElementById('dm-time').value;
+  if (!timeVal || !activeDelayTask) return;
 
-  shiftTasksFrom(targetDelayTask, mins);
-  document.getElementById('dm-time').value = ''; // clears the box
-  finishDelayUpdate();
+  // 1. get the minutes from the input (e.g., "13:00" -> 780)
+  const [h, m] = timeVal.split(':').map(Number);
+  const newBase = h * 60 + m;
+
+  // 2. get the current adjusted time of the task
+  const currentBase = parseInt(activeDelayTask.dataset.base);
+
+  // 3. calculate the gap (e.g., if it was 6:00am and you put 1:00pm, diff is 420 mins)
+  const diff = newBase - currentBase;
+
+  // 4. shift this task and all following ones by that gap
+  shiftTasksFrom(activeDelayTask, diff);
+
+  closeDelayMenu();
 }
 
     // ── BUILD DOM ──
